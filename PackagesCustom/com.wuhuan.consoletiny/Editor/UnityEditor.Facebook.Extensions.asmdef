@@ -1,0 +1,9 @@
+{
+    "name": "UnityEditor.Facebook.Extensions",
+    "references": [],
+    "optionalUnityReferences": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": []
+}

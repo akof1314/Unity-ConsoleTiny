@@ -1,0 +1,12 @@
+{
+  "name": "com.wuhuan.consoletiny",
+  "displayName": "Console Tiny",
+  "version": "1.0.0",
+  "unity": "2018.4",
+  "description": "consoletiny.",
+  "keywords": [
+    "consoletiny"
+  ],
+  "category": "Editor",
+  "dependencies": {}
+}
