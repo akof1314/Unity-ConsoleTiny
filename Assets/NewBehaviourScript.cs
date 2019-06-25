@@ -1,18 +1,16 @@
 ﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class NewBehaviourScript : MonoBehaviour
 {
-    // Start is called before the first frame update
-    void Start()
+    [ContextMenu("test")]
+    public void Test()
     {
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
+        Debug.Log("abcabc");
+        Debug.Log("a222bcabc");
+        Debug.Log("abcabc");
+        Debug.LogError("EditorMonoConsoleEditorMonoConsole");
+        Debug.Log("abcabc");
+        Debug.LogWarning("EditorMonoConsoleEditorMonoConsole");
     }
 }

@@ -15,7 +15,7 @@ using EditorGUIUtility = UnityEditor.EditorGUIUtility;
 
 namespace ConsoleTiny
 {
-    [EditorWindowTitle(title = "ConsoleT", useTypeNameAsIconName = true)]
+    [EditorWindowTitle(title = "Console", useTypeNameAsIconName = true)]
     public class ConsoleWindow : EditorWindow, IHasCustomMenu
     {
         [MenuItem("Window/General/ConsoleT %#t", false, 7)]
@@ -232,6 +232,7 @@ namespace ConsoleTiny
         };
 
         static ConsoleWindow ms_ConsoleWindow = null;
+        private string m_SearchText;
 
         static void ShowConsoleWindowImmediate()
         {
@@ -294,6 +295,7 @@ namespace ConsoleTiny
         {
             position = new Rect(200, 200, 800, 400);
             m_ListView = new ListViewState(0, 0);
+            m_SearchText = string.Empty;
         }
 
         void OnEnable()
@@ -303,7 +305,8 @@ namespace ConsoleTiny
 
             MakeSureConsoleAlwaysOnlyOne();
 
-            titleContent = GetLocalizedTitleContent();
+            titleContent = EditorGUIUtility.TrTextContentWithIcon("Console", "UnityEditor.ConsoleWindow");
+            titleContent = new GUIContent(titleContent) {text = "ConsoleT"};
             ms_ConsoleWindow = this;
             m_DevBuild = Unsupported.IsDeveloperMode();
 
@@ -588,6 +591,10 @@ namespace ConsoleTiny
 
             GUILayout.FlexibleSpace();
 
+            // Search bar
+            GUILayout.Space(4f);
+            SearchField(e);
+
             int errorCount = 0, warningCount = 0, logCount = 0;
             LogEntries.GetCountsByType(ref errorCount, ref warningCount, ref logCount);
             EditorGUI.BeginChangeCheck();
@@ -721,6 +728,50 @@ namespace ConsoleTiny
                 if (e.type == EventType.ExecuteCommand)
                     EditorGUIUtility.systemCopyBuffer = m_ActiveText;
                 e.Use();
+            }
+        }
+
+        private void SearchField(Event e)
+        {
+            string searchBarName = "SearchFilter";
+            if (e.commandName == "Find")
+            {
+                if (e.type == EventType.ExecuteCommand)
+                {
+                    EditorGUI.FocusTextInControl(searchBarName);
+                }
+
+                if (e.type != EventType.Layout)
+                    e.Use();
+            }
+
+            string searchText = m_SearchText;
+            if (e.type == EventType.KeyDown)
+            {
+                if (e.keyCode == KeyCode.Escape)
+                {
+                    searchText = string.Empty;
+                    GUIUtility.keyboardControl = m_ListView.ID;
+                    Repaint();
+                }
+                else if ((e.keyCode == KeyCode.UpArrow || e.keyCode == KeyCode.DownArrow) &&
+                         GUI.GetNameOfFocusedControl() == searchBarName)
+                {
+                    GUIUtility.keyboardControl = m_ListView.ID;
+                }
+            }
+
+            GUI.SetNextControlName(searchBarName);
+            Rect rect = GUILayoutUtility.GetRect(0, EditorGUILayout.kLabelFloatMaxW * 1.5f, EditorGUI.kSingleLineHeight,
+                EditorGUI.kSingleLineHeight, EditorStyles.toolbarSearchField, GUILayout.MinWidth(100),
+                GUILayout.MaxWidth(300));
+            var filteringText = EditorGUI.ToolbarSearchField(rect, searchText, false);
+            if (m_SearchText != filteringText)
+            {
+                m_SearchText = filteringText;
+                LogEntries.SetFilteringText(filteringText);
+                // Reset the active entry when we change the filtering text
+                SetActiveEntry(null);
             }
         }
 
