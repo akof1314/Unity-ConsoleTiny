@@ -76,6 +76,11 @@ namespace ConsoleTiny
             MatchFilteringText();
         }
 
+        public static void OpenFileOnSpecificLineAndColumn(string filePath, int line, int column)
+        {
+
+        }
+
         private static int GetFilteredIndexCount()
         {
             return filteredIndex.Count;

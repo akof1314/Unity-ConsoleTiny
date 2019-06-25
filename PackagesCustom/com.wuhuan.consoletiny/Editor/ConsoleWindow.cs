@@ -717,7 +717,7 @@ namespace ConsoleTiny
             // Display active text (We want word wrapped text with a vertical scrollbar)
             m_TextScroll = GUILayout.BeginScrollView(m_TextScroll, Constants.Box);
             float height = Constants.MessageStyle.CalcHeight(new GUIContent(m_ActiveText), position.width);
-            EditorGUILayout.SelectableLabel(m_ActiveText, Constants.MessageStyle, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true), GUILayout.MinHeight(height));
+            EditorGUILayoutTiny.SelectableLabel(m_ActiveText, Constants.MessageStyle, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true), GUILayout.MinHeight(height));
             GUILayout.EndScrollView();
 
             SplitterGUILayout.EndVerticalSplit();
@@ -773,6 +773,69 @@ namespace ConsoleTiny
                 // Reset the active entry when we change the filtering text
                 SetActiveEntry(null);
             }
+        }
+
+        internal static string StacktraceWithHyperlinks(string stacktraceText)
+        {
+            StringBuilder textWithHyperlinks = new StringBuilder();
+            var lines = stacktraceText.Split(new string[] { "\n" }, StringSplitOptions.None);
+            for (int i = 0; i < lines.Length; ++i)
+            {
+                string textBeforeFilePath = ") (at ";
+                int filePathIndex = lines[i].IndexOf(textBeforeFilePath, StringComparison.Ordinal);
+                if (filePathIndex > 0)
+                {
+                    filePathIndex += textBeforeFilePath.Length;
+                    if (lines[i][filePathIndex] != '<') // sometimes no url is given, just an id between <>, we can't do an hyperlink
+                    {
+                        string filePathPart = lines[i].Substring(filePathIndex);
+                        int lineIndex = filePathPart.LastIndexOf(":", StringComparison.Ordinal); // LastIndex because the url can contain ':' ex:"C:"
+                        if (lineIndex > 0)
+                        {
+                            int endLineIndex = filePathPart.LastIndexOf(")", StringComparison.Ordinal); // LastIndex because files or folder in the url can contain ')'
+                            if (endLineIndex > 0)
+                            {
+                                string lineString =
+                                    filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
+                                string filePath = filePathPart.Substring(0, lineIndex);
+
+                                textWithHyperlinks.Append(lines[i].Substring(0, filePathIndex));
+                                //textWithHyperlinks.Append("<a href=\"" + filePath + "\"" + " line=\"" + lineString + "\">");
+                                textWithHyperlinks.Append("<color=#0000FF>");
+                                textWithHyperlinks.Append(filePath + ":" + lineString);
+                                //textWithHyperlinks.Append("</a>)\n");
+                                textWithHyperlinks.Append("</color>)\n");
+
+                                continue; // continue to evade the default case
+                            }
+                        }
+                    }
+                }
+                // default case if no hyperlink : we just write the line
+                textWithHyperlinks.Append(lines[i] + "\n");
+            }
+            // Remove the last \n
+            if (textWithHyperlinks.Length > 0) // textWithHyperlinks always ends with \n if it is not empty
+                textWithHyperlinks.Remove(textWithHyperlinks.Length - 1, 1);
+
+            return textWithHyperlinks.ToString();
+        }
+
+        private void EditorGUI_HyperLinkClicked(object sender, EventArgs e)
+        {
+            EditorGUILayoutTiny.HyperLinkClickedEventArgs args = (EditorGUILayoutTiny.HyperLinkClickedEventArgs)e;
+
+            string filePath;
+            string lineString;
+            if (!args.hyperlinkInfos.TryGetValue("href", out filePath) ||
+                !args.hyperlinkInfos.TryGetValue("line", out lineString))
+                return;
+
+            int line = Int32.Parse(lineString);
+            var projectFilePath = FileUtil.GetProjectRelativePath(filePath.Replace('\\', '/'));
+
+            if (!String.IsNullOrEmpty(projectFilePath))
+                LogEntries.OpenFileOnSpecificLineAndColumn(filePath, line, -1);
         }
 
         public static bool GetConsoleErrorPause()

@@ -12,5 +12,16 @@ public class NewBehaviourScript : MonoBehaviour
         Debug.LogError("EditorMonoConsoleEditorMonoConsole");
         Debug.Log("abcabc");
         Debug.LogWarning("EditorMonoConsoleEditorMonoConsole");
+        Test1();
+    }
+
+    private void Test1()
+    {
+        Test2();
+    }
+
+    private void Test2()
+    {
+        Debug.Log("more");
     }
 }
