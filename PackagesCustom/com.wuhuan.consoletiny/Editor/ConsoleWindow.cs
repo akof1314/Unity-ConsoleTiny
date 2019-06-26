@@ -904,11 +904,9 @@ namespace ConsoleTiny
 
             if (rowDoubleClicked != -1)
             {
-                var obj = AssetDatabase.LoadAssetAtPath<TextAsset>(m_StacktraceLineInfos[rowDoubleClicked].filePath);
-                if (obj)
-                {
-                    AssetDatabase.OpenAsset(obj, m_StacktraceLineInfos[rowDoubleClicked].lineNum);
-                }
+                var filePath = m_StacktraceLineInfos[rowDoubleClicked].filePath;
+                var lineNum = m_StacktraceLineInfos[rowDoubleClicked].lineNum;
+                ScriptAssetOpener.OpenAsset(filePath, lineNum);
             }
         }
 
