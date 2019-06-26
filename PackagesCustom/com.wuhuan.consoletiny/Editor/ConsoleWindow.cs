@@ -132,6 +132,7 @@ namespace ConsoleTiny
         ListViewState m_ListView;
         ListViewState m_ListViewMessage;
         private List<StacktraceLineInfo> m_StacktraceLineInfos;
+        private int m_StacktraceLineContextClickRow;
         string m_ActiveText = "";
         private int m_ActiveInstanceID = 0;
         bool m_DevBuild;
@@ -304,6 +305,7 @@ namespace ConsoleTiny
             m_ListViewMessage = new ListViewState(0, 14);
             m_SearchText = string.Empty;
             m_StacktraceLineInfos = new List<StacktraceLineInfo>();
+            m_StacktraceLineContextClickRow = -1;
         }
 
         void OnEnable()
@@ -792,6 +794,7 @@ namespace ConsoleTiny
 
         private class StacktraceLineInfo
         {
+            public string plain;
             public string text;
             public string filePath;
             public int lineNum;
@@ -807,12 +810,13 @@ namespace ConsoleTiny
             var maxLineLen = -1;
             for (int i = 0; i < lines.Length; i++)
             {
-                if (i == 1)
+                if (lines[i].StartsWith("UnityEngine.Debug") || string.IsNullOrEmpty(lines[i]))
                 {
                     continue;
                 }
 
                 StacktraceLineInfo info = new StacktraceLineInfo();
+                info.plain = lines[i];
                 int filePathIndex = lines[i].IndexOf(textBeforeFilePath, StringComparison.Ordinal);
                 if (filePathIndex > 0)
                 {
@@ -856,6 +860,20 @@ namespace ConsoleTiny
                 maxWidth = Constants.MessageStyle.CalcSize(tempContent).x;
             }
 
+            if (m_StacktraceLineContextClickRow != -1)
+            {
+                var stacktraceLineInfo = m_StacktraceLineInfos[m_StacktraceLineContextClickRow];
+                m_StacktraceLineContextClickRow = -1;
+                GenericMenu menu = new GenericMenu();
+                if (!string.IsNullOrEmpty(stacktraceLineInfo.filePath))
+                {
+                    menu.AddItem(new GUIContent("Open"), false, StacktraceListView_Open, stacktraceLineInfo);
+                    menu.AddSeparator("");
+                }
+                menu.AddItem(new GUIContent("Copy"), false, StacktraceListView_Copy, stacktraceLineInfo);
+                menu.ShowAsContext();
+            }
+
             int id = GUIUtility.GetControlID(0);
             int rowDoubleClicked = -1;
             int selectedRow = -1;
@@ -871,8 +889,16 @@ namespace ConsoleTiny
                 (float)(m_ListViewMessage.totalRows * m_ListViewMessage.rowHeight + 3));
             foreach (ListViewElement el in ListViewGUI.DoListView(rect, m_ListViewMessage, null, string.Empty))
             {
-                if (e.type == EventType.MouseDown && e.button == 0 && el.position.Contains(e.mousePosition))
+                if (e.type == EventType.MouseDown && (e.button == 0 || e.button == 1) && el.position.Contains(e.mousePosition))
                 {
+                    if (e.button == 1)
+                    {
+                        m_ListViewMessage.row = el.row;
+                        selectedRow = m_ListViewMessage.row;
+                        m_StacktraceLineContextClickRow = selectedRow;
+                        continue;
+                    }
+
                     selectedRow = m_ListViewMessage.row;
                     if (e.clickCount == 2)
                         openSelectedItem = true;
@@ -902,11 +928,34 @@ namespace ConsoleTiny
                 e.Use();
             }
 
+            if (m_StacktraceLineContextClickRow != -1)
+            {
+                Repaint();
+            }
+
             if (rowDoubleClicked != -1)
             {
-                var filePath = m_StacktraceLineInfos[rowDoubleClicked].filePath;
-                var lineNum = m_StacktraceLineInfos[rowDoubleClicked].lineNum;
+                StacktraceListView_Open(m_StacktraceLineInfos[rowDoubleClicked]);
+            }
+        }
+
+        private void StacktraceListView_Open(object userData)
+        {
+            var stacktraceLineInfo = userData as StacktraceLineInfo;
+            if (stacktraceLineInfo != null)
+            {
+                var filePath = stacktraceLineInfo.filePath;
+                var lineNum = stacktraceLineInfo.lineNum;
                 ScriptAssetOpener.OpenAsset(filePath, lineNum);
+            }
+        }
+
+        private void StacktraceListView_Copy(object userData)
+        {
+            var stacktraceLineInfo = userData as StacktraceLineInfo;
+            if (stacktraceLineInfo != null)
+            {
+                EditorGUIUtility.systemCopyBuffer = stacktraceLineInfo.plain;
             }
         }
 
