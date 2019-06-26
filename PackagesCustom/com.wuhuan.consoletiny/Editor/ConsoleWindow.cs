@@ -104,6 +104,10 @@ namespace ConsoleTiny
                 StatusWarn = "CN StatusWarn";
                 StatusLog = "CN StatusInfo";
                 CountBadge = "CN CountBadge";
+                MessageStyle = new GUIStyle(MessageStyle);
+                MessageStyle.onNormal.textColor = MessageStyle.active.textColor;
+                MessageStyle.padding.top = 0;
+                MessageStyle.padding.bottom = 0;
 
                 // If the console window isn't open OnEnable() won't trigger so it will end up with 0 lines,
                 // so we always make sure we read it up when we initialize here.
@@ -126,6 +130,8 @@ namespace ConsoleTiny
         bool m_HasUpdatedGuiStyles;
 
         ListViewState m_ListView;
+        ListViewState m_ListViewMessage;
+        private List<StacktraceLineInfo> m_StacktraceLineInfos;
         string m_ActiveText = "";
         private int m_ActiveInstanceID = 0;
         bool m_DevBuild;
@@ -295,7 +301,9 @@ namespace ConsoleTiny
         {
             position = new Rect(200, 200, 800, 400);
             m_ListView = new ListViewState(0, 0);
+            m_ListViewMessage = new ListViewState(0, 14);
             m_SearchText = string.Empty;
+            m_StacktraceLineInfos = new List<StacktraceLineInfo>();
         }
 
         void OnEnable()
@@ -306,7 +314,7 @@ namespace ConsoleTiny
             MakeSureConsoleAlwaysOnlyOne();
 
             titleContent = EditorGUIUtility.TrTextContentWithIcon("Console", "UnityEditor.ConsoleWindow");
-            titleContent = new GUIContent(titleContent) {text = "ConsoleT"};
+            titleContent = new GUIContent(titleContent) { text = "ConsoleT" };
             ms_ConsoleWindow = this;
             m_DevBuild = Unsupported.IsDeveloperMode();
 
@@ -502,6 +510,7 @@ namespace ConsoleTiny
                 m_ActiveText = string.Empty;
                 m_ActiveInstanceID = 0;
                 m_ListView.row = -1;
+                m_ListViewMessage.row = -1;
             }
         }
 
@@ -705,6 +714,11 @@ namespace ConsoleTiny
                     rowDoubleClicked = selectedRow;
                     e.Use();
                 }
+
+                if (selectedRow != -1)
+                {
+                    m_ListViewMessage.row = -1;
+                }
             }
 
             // Prevent dead locking in EditorMonoConsole by delaying callbacks (which can log to the console) until after LogEntries.EndGettingEntries() has been
@@ -715,10 +729,11 @@ namespace ConsoleTiny
             EditorGUIUtility.SetIconSize(Vector2.zero);
 
             // Display active text (We want word wrapped text with a vertical scrollbar)
-            m_TextScroll = GUILayout.BeginScrollView(m_TextScroll, Constants.Box);
-            float height = Constants.MessageStyle.CalcHeight(new GUIContent(m_ActiveText), position.width);
-            EditorGUILayoutTiny.SelectableLabel(m_ActiveText, Constants.MessageStyle, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true), GUILayout.MinHeight(height));
-            GUILayout.EndScrollView();
+            //m_TextScroll = GUILayout.BeginScrollView(m_TextScroll, Constants.Box);
+            //float height = Constants.MessageStyle.CalcHeight(new GUIContent(m_ActiveText), position.width);
+            //EditorGUILayoutTiny.SelectableLabel(m_ActiveText, Constants.MessageStyle, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true), GUILayout.MinHeight(height));
+            //GUILayout.EndScrollView();
+            StacktraceListView(e, tempContent);
 
             SplitterGUILayout.EndVerticalSplit();
 
@@ -775,6 +790,128 @@ namespace ConsoleTiny
             }
         }
 
+        private class StacktraceLineInfo
+        {
+            public string text;
+            public string filePath;
+            public int lineNum;
+        }
+
+        private void StacktraceListView(Event e, GUIContent tempContent)
+        {
+            var lines = m_ActiveText.Split(new string[] { "\n" }, StringSplitOptions.None);
+            m_StacktraceLineInfos.Clear();
+
+            string textBeforeFilePath = ") (at ";
+            var maxLine = -1;
+            var maxLineLen = -1;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (i == 1)
+                {
+                    continue;
+                }
+
+                StacktraceLineInfo info = new StacktraceLineInfo();
+                int filePathIndex = lines[i].IndexOf(textBeforeFilePath, StringComparison.Ordinal);
+                if (filePathIndex > 0)
+                {
+                    filePathIndex += textBeforeFilePath.Length;
+                    if (lines[i][filePathIndex] != '<') // sometimes no url is given, just an id between <>, we can't do an hyperlink
+                    {
+                        string filePathPart = lines[i].Substring(filePathIndex);
+                        int lineIndex = filePathPart.LastIndexOf(":", StringComparison.Ordinal); // LastIndex because the url can contain ':' ex:"C:"
+                        if (lineIndex > 0)
+                        {
+                            int endLineIndex = filePathPart.LastIndexOf(")", StringComparison.Ordinal); // LastIndex because files or folder in the url can contain ')'
+                            if (endLineIndex > 0)
+                            {
+                                string lineString =
+                                    filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
+                                string filePath = filePathPart.Substring(0, lineIndex);
+
+                                string methodString = lines[i].Substring(0, filePathIndex);
+                                lines[i] = string.Format("{0}<color=#79A7BE>{1}:{2}</color>)", methodString, filePath, lineString);
+
+                                info.filePath = filePath;
+                                info.lineNum = int.Parse(lineString);
+                            }
+                        }
+                    }
+                }
+                info.text = lines[i];
+                m_StacktraceLineInfos.Add(info);
+
+                if (maxLineLen < lines[i].Length)
+                {
+                    maxLineLen = lines[i].Length;
+                    maxLine = i;
+                }
+            }
+
+            float maxWidth = 1f;
+            if (maxLine != -1)
+            {
+                tempContent.text = lines[maxLine];
+                maxWidth = Constants.MessageStyle.CalcSize(tempContent).x;
+            }
+
+            int id = GUIUtility.GetControlID(0);
+            int rowDoubleClicked = -1;
+            int selectedRow = -1;
+            bool openSelectedItem = false;
+            m_ListViewMessage.totalRows = m_StacktraceLineInfos.Count;
+            GUILayout.BeginHorizontal(Constants.Box);
+            m_ListViewMessage.scrollPos = EditorGUILayout.BeginScrollView(m_ListViewMessage.scrollPos);
+            ListViewGUI.ilvState.beganHorizontal = true;
+            m_ListViewMessage.draggedFrom = -1;
+            m_ListViewMessage.draggedTo = -1;
+            m_ListViewMessage.fileNames = (string[])null;
+            Rect rect = GUILayoutUtility.GetRect(maxWidth,
+                (float)(m_ListViewMessage.totalRows * m_ListViewMessage.rowHeight + 3));
+            foreach (ListViewElement el in ListViewGUI.DoListView(rect, m_ListViewMessage, null, string.Empty))
+            {
+                if (e.type == EventType.MouseDown && e.button == 0 && el.position.Contains(e.mousePosition))
+                {
+                    selectedRow = m_ListViewMessage.row;
+                    if (e.clickCount == 2)
+                        openSelectedItem = true;
+                }
+                else if (e.type == EventType.Repaint)
+                {
+                    tempContent.text = m_StacktraceLineInfos[el.row].text;
+                    rect = el.position;
+                    if (rect.width < maxWidth)
+                    {
+                        rect.width = maxWidth;
+                    }
+                    Constants.MessageStyle.Draw(rect, tempContent, id, m_ListViewMessage.row == el.row);
+                }
+            }
+
+            // Open entry using return key
+            if ((GUIUtility.keyboardControl == m_ListViewMessage.ID) && (e.type == EventType.KeyDown) && (e.keyCode == KeyCode.Return) && (m_ListViewMessage.row != 0))
+            {
+                selectedRow = m_ListViewMessage.row;
+                openSelectedItem = true;
+            }
+
+            if (openSelectedItem)
+            {
+                rowDoubleClicked = selectedRow;
+                e.Use();
+            }
+
+            if (rowDoubleClicked != -1)
+            {
+                var obj = AssetDatabase.LoadAssetAtPath<TextAsset>(m_StacktraceLineInfos[rowDoubleClicked].filePath);
+                if (obj)
+                {
+                    AssetDatabase.OpenAsset(obj, m_StacktraceLineInfos[rowDoubleClicked].lineNum);
+                }
+            }
+        }
+
         internal static string StacktraceWithHyperlinks(string stacktraceText)
         {
             StringBuilder textWithHyperlinks = new StringBuilder();
@@ -819,23 +956,6 @@ namespace ConsoleTiny
                 textWithHyperlinks.Remove(textWithHyperlinks.Length - 1, 1);
 
             return textWithHyperlinks.ToString();
-        }
-
-        private void EditorGUI_HyperLinkClicked(object sender, EventArgs e)
-        {
-            EditorGUILayoutTiny.HyperLinkClickedEventArgs args = (EditorGUILayoutTiny.HyperLinkClickedEventArgs)e;
-
-            string filePath;
-            string lineString;
-            if (!args.hyperlinkInfos.TryGetValue("href", out filePath) ||
-                !args.hyperlinkInfos.TryGetValue("line", out lineString))
-                return;
-
-            int line = Int32.Parse(lineString);
-            var projectFilePath = FileUtil.GetProjectRelativePath(filePath.Replace('\\', '/'));
-
-            if (!String.IsNullOrEmpty(projectFilePath))
-                LogEntries.OpenFileOnSpecificLineAndColumn(filePath, line, -1);
         }
 
         public static bool GetConsoleErrorPause()
