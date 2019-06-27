@@ -498,6 +498,7 @@ namespace ConsoleTiny
         {
             if (entry != null)
             {
+                StacktraceListView_Parse(m_ActiveText, entry.condition);
                 m_ActiveText = entry.condition;
                 // ping object referred by the log entry
                 if (m_ActiveInstanceID != entry.instanceID)
@@ -509,6 +510,7 @@ namespace ConsoleTiny
             }
             else
             {
+                StacktraceListView_Parse(m_ActiveText, string.Empty);
                 m_ActiveText = string.Empty;
                 m_ActiveInstanceID = 0;
                 m_ListView.row = -1;
@@ -792,6 +794,8 @@ namespace ConsoleTiny
             }
         }
 
+        #region Stacktrace
+
         private class StacktraceLineInfo
         {
             public string plain;
@@ -800,30 +804,85 @@ namespace ConsoleTiny
             public int lineNum;
         }
 
-        private void StacktraceListView(Event e, GUIContent tempContent)
+        private void StacktraceListView_Parse(string preActiveText, string nowActiveText)
         {
-            var lines = m_ActiveText.Split(new string[] { "\n" }, StringSplitOptions.None);
+            if (preActiveText == nowActiveText)
+            {
+                if (!(nowActiveText.Length > 0 && m_StacktraceLineInfos.Count == 0))
+                {
+                    return;
+                }
+            }
+            var lines = nowActiveText.Split(new string[] { "\n" }, StringSplitOptions.None);
             m_StacktraceLineInfos.Clear();
 
             string textBeforeFilePath = ") (at ";
-            var maxLine = -1;
-            var maxLineLen = -1;
+            string textUnityEngineDebug = "UnityEngine.Debug";
+            string fileInBuildSlave = "C:/buildslave/unity/";
             for (int i = 0; i < lines.Length; i++)
             {
-                if (lines[i].StartsWith("UnityEngine.Debug") || string.IsNullOrEmpty(lines[i]))
+                var line = lines[i];
+                if (string.IsNullOrEmpty(line))
+                {
+                    continue;
+                }
+                if (line.StartsWith(textUnityEngineDebug))
                 {
                     continue;
                 }
 
                 StacktraceLineInfo info = new StacktraceLineInfo();
-                info.plain = lines[i];
-                int filePathIndex = lines[i].IndexOf(textBeforeFilePath, StringComparison.Ordinal);
+                info.plain = line;
+                info.text = info.plain;
+                m_StacktraceLineInfos.Add(info);
+
+                int methodLastIndex = line.IndexOf('(');
+                if (methodLastIndex <= 0)
+                {
+                    continue;
+                }
+                int argsLastIndex = line.IndexOf(')', methodLastIndex);
+                if (argsLastIndex <= 0)
+                {
+                    continue;
+                }
+                int methodFirstIndex = line.LastIndexOf(':', methodLastIndex);
+                if (methodFirstIndex <= 0)
+                {
+                    methodFirstIndex = line.LastIndexOf('.', methodLastIndex);
+                    if (methodFirstIndex <= 0)
+                    {
+                        continue;
+                    }
+                }
+                string methodString = line.Substring(methodFirstIndex + 1, methodLastIndex - methodFirstIndex - 1);
+
+                string classString;
+                string namespaceString = String.Empty;
+                int classFirstIndex = line.LastIndexOf('.', methodFirstIndex);
+                if (classFirstIndex <= 0)
+                {
+                    classString = line.Substring(0, methodFirstIndex + 1);
+                }
+                else
+                {
+                    classString = line.Substring(classFirstIndex + 1, methodFirstIndex - classFirstIndex);
+                    namespaceString = line.Substring(0, classFirstIndex + 1);
+                }
+
+                string argsString = line.Substring(methodLastIndex, argsLastIndex - methodLastIndex + 1);
+                string fileString = String.Empty;
+                string fileNameString = String.Empty;
+                string fileLineString = String.Empty;
+                bool alphaColor = true;
+
+                int filePathIndex = line.IndexOf(textBeforeFilePath, argsLastIndex, StringComparison.Ordinal);
                 if (filePathIndex > 0)
                 {
                     filePathIndex += textBeforeFilePath.Length;
-                    if (lines[i][filePathIndex] != '<') // sometimes no url is given, just an id between <>, we can't do an hyperlink
+                    if (line[filePathIndex] != '<') // sometimes no url is given, just an id between <>, we can't do an hyperlink
                     {
-                        string filePathPart = lines[i].Substring(filePathIndex);
+                        string filePathPart = line.Substring(filePathIndex);
                         int lineIndex = filePathPart.LastIndexOf(":", StringComparison.Ordinal); // LastIndex because the url can contain ':' ex:"C:"
                         if (lineIndex > 0)
                         {
@@ -834,21 +893,60 @@ namespace ConsoleTiny
                                     filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
                                 string filePath = filePathPart.Substring(0, lineIndex);
 
-                                string methodString = lines[i].Substring(0, filePathIndex);
-                                lines[i] = string.Format("{0}<color=#79A7BE>{1}:{2}</color>)", methodString, filePath, lineString);
-
                                 info.filePath = filePath;
                                 info.lineNum = int.Parse(lineString);
+
+                                fileNameString = System.IO.Path.GetFileName(filePath);
+                                fileString = line.Substring(argsLastIndex + 1, filePath.Length - fileNameString.Length + 5);
+                                fileLineString = filePathPart.Substring(lineIndex, endLineIndex - lineIndex + 1);
+
+                                if (!filePath.StartsWith(fileInBuildSlave, StringComparison.Ordinal))
+                                {
+                                    alphaColor = false;
+                                }
                             }
                         }
                     }
+                    else
+                    {
+                        fileString = line.Substring(argsLastIndex + 1);
+                    }
                 }
-                info.text = lines[i];
-                m_StacktraceLineInfos.Add(info);
 
-                if (maxLineLen < lines[i].Length)
+                if (alphaColor)
                 {
-                    maxLineLen = lines[i].Length;
+                    info.text = string.Format("<color=#4E5B6A>{0}</color>" +
+                                              "<color=#2A577B>{1}</color>" +
+                                              "<color=#246581>{2}</color>" +
+                                              "<color=#425766>{3}</color>" +
+                                              "<color=#375860>{4}</color>" +
+                                              "<color=#4A6E8A>{5}</color>" +
+                                              "<color=#375860>{6}</color>",
+                        namespaceString, classString, methodString, argsString, fileString, fileNameString, fileLineString);
+                }
+                else
+                {
+                    info.text = string.Format("<color=#6A87A7>{0}</color>" +
+                                              "<color=#1A7ECD>{1}</color>" +
+                                              "<color=#0D9DDC>{2}</color>" +
+                                              "<color=#4F7F9F>{3}</color>" +
+                                              "<color=#375860>{4}</color>" +
+                                              "<color=#4A6E8A>{5}</color>" +
+                                              "<color=#375860>{6}</color>",
+                        namespaceString, classString, methodString, argsString, fileString, fileNameString, fileLineString);
+                }
+            }
+        }
+
+        private void StacktraceListView(Event e, GUIContent tempContent)
+        {
+            var maxLine = -1;
+            var maxLineLen = -1;
+            for (int i = 0; i < m_StacktraceLineInfos.Count; i++)
+            {
+                if (maxLineLen < m_StacktraceLineInfos[i].plain.Length)
+                {
+                    maxLineLen = m_StacktraceLineInfos[i].plain.Length;
                     maxLine = i;
                 }
             }
@@ -856,7 +954,7 @@ namespace ConsoleTiny
             float maxWidth = 1f;
             if (maxLine != -1)
             {
-                tempContent.text = lines[maxLine];
+                tempContent.text = m_StacktraceLineInfos[maxLine].plain;
                 maxWidth = Constants.MessageStyle.CalcSize(tempContent).x;
             }
 
@@ -871,6 +969,7 @@ namespace ConsoleTiny
                     menu.AddSeparator("");
                 }
                 menu.AddItem(new GUIContent("Copy"), false, StacktraceListView_Copy, stacktraceLineInfo);
+                menu.AddItem(new GUIContent("Copy All"), false, StacktraceListView_CopyAll);
                 menu.ShowAsContext();
             }
 
@@ -959,51 +1058,18 @@ namespace ConsoleTiny
             }
         }
 
-        internal static string StacktraceWithHyperlinks(string stacktraceText)
+        private void StacktraceListView_CopyAll()
         {
-            StringBuilder textWithHyperlinks = new StringBuilder();
-            var lines = stacktraceText.Split(new string[] { "\n" }, StringSplitOptions.None);
-            for (int i = 0; i < lines.Length; ++i)
+            StringBuilder stringBuilder = new StringBuilder();
+            foreach (var stacktraceLineInfo in m_StacktraceLineInfos)
             {
-                string textBeforeFilePath = ") (at ";
-                int filePathIndex = lines[i].IndexOf(textBeforeFilePath, StringComparison.Ordinal);
-                if (filePathIndex > 0)
-                {
-                    filePathIndex += textBeforeFilePath.Length;
-                    if (lines[i][filePathIndex] != '<') // sometimes no url is given, just an id between <>, we can't do an hyperlink
-                    {
-                        string filePathPart = lines[i].Substring(filePathIndex);
-                        int lineIndex = filePathPart.LastIndexOf(":", StringComparison.Ordinal); // LastIndex because the url can contain ':' ex:"C:"
-                        if (lineIndex > 0)
-                        {
-                            int endLineIndex = filePathPart.LastIndexOf(")", StringComparison.Ordinal); // LastIndex because files or folder in the url can contain ')'
-                            if (endLineIndex > 0)
-                            {
-                                string lineString =
-                                    filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
-                                string filePath = filePathPart.Substring(0, lineIndex);
-
-                                textWithHyperlinks.Append(lines[i].Substring(0, filePathIndex));
-                                //textWithHyperlinks.Append("<a href=\"" + filePath + "\"" + " line=\"" + lineString + "\">");
-                                textWithHyperlinks.Append("<color=#0000FF>");
-                                textWithHyperlinks.Append(filePath + ":" + lineString);
-                                //textWithHyperlinks.Append("</a>)\n");
-                                textWithHyperlinks.Append("</color>)\n");
-
-                                continue; // continue to evade the default case
-                            }
-                        }
-                    }
-                }
-                // default case if no hyperlink : we just write the line
-                textWithHyperlinks.Append(lines[i] + "\n");
+                stringBuilder.AppendLine(stacktraceLineInfo.plain);
             }
-            // Remove the last \n
-            if (textWithHyperlinks.Length > 0) // textWithHyperlinks always ends with \n if it is not empty
-                textWithHyperlinks.Remove(textWithHyperlinks.Length - 1, 1);
 
-            return textWithHyperlinks.ToString();
+            EditorGUIUtility.systemCopyBuffer = stringBuilder.ToString();
         }
+
+#endregion
 
         public static bool GetConsoleErrorPause()
         {
