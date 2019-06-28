@@ -816,6 +816,8 @@ namespace ConsoleTiny
             var lines = nowActiveText.Split(new string[] { "\n" }, StringSplitOptions.None);
             m_StacktraceLineInfos.Clear();
 
+            string rootDirectory = System.IO.Path.Combine(Application.dataPath, "..");
+            Uri uriRoot = new Uri(rootDirectory);
             string textBeforeFilePath = ") (at ";
             string textUnityEngineDebug = "UnityEngine.Debug";
             string fileInBuildSlave = "C:/buildslave/unity/";
@@ -837,7 +839,7 @@ namespace ConsoleTiny
                 m_StacktraceLineInfos.Add(info);
 
                 int methodLastIndex = line.IndexOf('(');
-                if (methodLastIndex <= 0)
+                if (methodLastIndex <= 0 || i == 0)
                 {
                     continue;
                 }
@@ -859,7 +861,7 @@ namespace ConsoleTiny
 
                 string classString;
                 string namespaceString = String.Empty;
-                int classFirstIndex = line.LastIndexOf('.', methodFirstIndex);
+                int classFirstIndex = line.LastIndexOf('.', methodFirstIndex - 1);
                 if (classFirstIndex <= 0)
                 {
                     classString = line.Substring(0, methodFirstIndex + 1);
@@ -893,17 +895,29 @@ namespace ConsoleTiny
                                     filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
                                 string filePath = filePathPart.Substring(0, lineIndex);
 
-                                info.filePath = filePath;
-                                info.lineNum = int.Parse(lineString);
-
-                                fileNameString = System.IO.Path.GetFileName(filePath);
-                                fileString = line.Substring(argsLastIndex + 1, filePath.Length - fileNameString.Length + 5);
-                                fileLineString = filePathPart.Substring(lineIndex, endLineIndex - lineIndex + 1);
-
                                 if (!filePath.StartsWith(fileInBuildSlave, StringComparison.Ordinal))
                                 {
                                     alphaColor = false;
                                 }
+
+                                info.filePath = filePath;
+                                info.lineNum = int.Parse(lineString);
+
+                                if (filePath.Length > 2 && filePath[1] == ':')
+                                {
+                                    Uri uriFile = new Uri(filePath);
+                                    Uri relativeUri = uriRoot.MakeRelativeUri(uriFile);
+                                    string relativePath = relativeUri.ToString();
+                                    if (!string.IsNullOrEmpty(relativePath))
+                                    {
+                                        info.plain = info.plain.Replace(filePath, relativePath);
+                                        filePath = relativePath;
+                                    }
+                                }
+
+                                fileNameString = System.IO.Path.GetFileName(filePath);
+                                fileString = textBeforeFilePath.Substring(1) + filePath.Substring(0, filePath.Length - fileNameString.Length);
+                                fileLineString = filePathPart.Substring(lineIndex, endLineIndex - lineIndex + 1);
                             }
                         }
                     }

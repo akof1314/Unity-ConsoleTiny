@@ -169,7 +169,7 @@ namespace ConsoleTiny
 
         public static bool OpenAsset(string file, int line)
         {
-            if (file == "None")
+            if (string.IsNullOrEmpty(file) || file == "None")
             {
                 return false;
             }
@@ -189,23 +189,28 @@ namespace ConsoleTiny
                 return false;
             }
 
-            string rootDirectory = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            string rootDirectory = Path.Combine(Application.dataPath, "..");
             string projectDirectory = rootDirectory;
-            var dirs = file.Split('/');
-            string fileFullPath = Path.Combine(projectDirectory, file.Replace('/', '\\'));
-            foreach (var dir in dirs)
+            string fileFullPath = Path.GetFullPath(file.Replace('/', '\\'));
+            string dirPath = fileFullPath;
+
+            do
             {
-                projectDirectory = Path.Combine(projectDirectory, dir);
-                if (Directory.Exists(projectDirectory))
+                dirPath = Path.GetDirectoryName(dirPath);
+                if (!string.IsNullOrEmpty(dirPath) && Directory.Exists(dirPath))
                 {
-                    var files = Directory.GetFiles(projectDirectory, "*.sln", SearchOption.TopDirectoryOnly);
+                    var files = Directory.GetFiles(dirPath, "*.sln", SearchOption.TopDirectoryOnly);
                     if (files.Length > 0)
                     {
                         sao.OpenEditor(files[0], fileFullPath, line);
                         return true;
                     }
                 }
-            }
+                else
+                {
+                    break;
+                }
+            } while (true);
 
             var packageInfos = Packages.GetAll();
             foreach (var packageInfo in packageInfos)
