@@ -108,6 +108,8 @@ namespace ConsoleTiny
                 MessageStyle.onNormal.textColor = MessageStyle.active.textColor;
                 MessageStyle.padding.top = 0;
                 MessageStyle.padding.bottom = 0;
+                var selectedStyle = new GUIStyle("MeTransitionSelect");
+                MessageStyle.onNormal.background = selectedStyle.normal.background;
 
                 // If the console window isn't open OnEnable() won't trigger so it will end up with 0 lines,
                 // so we always make sure we read it up when we initialize here.
@@ -546,6 +548,7 @@ namespace ConsoleTiny
         {
             Event e = Event.current;
             LoadIcons();
+            LogEntries.TestFilteringText(m_SearchText);
 
             if (!m_HasUpdatedGuiStyles)
             {
@@ -728,7 +731,7 @@ namespace ConsoleTiny
             // Prevent dead locking in EditorMonoConsole by delaying callbacks (which can log to the console) until after LogEntries.EndGettingEntries() has been
             // called (this releases the mutex in EditorMonoConsole so logging again is allowed). Fix for case 1081060.
             if (rowDoubleClicked != -1)
-                LogEntries.RowGotDoubleClicked(rowDoubleClicked);
+                StacktraceListView_RowGotDoubleClicked();
 
             EditorGUIUtility.SetIconSize(Vector2.zero);
 
@@ -815,12 +818,17 @@ namespace ConsoleTiny
             }
             var lines = nowActiveText.Split(new string[] { "\n" }, StringSplitOptions.None);
             m_StacktraceLineInfos.Clear();
+            m_ListViewMessage.scrollPos.y = 0;
 
             string rootDirectory = System.IO.Path.Combine(Application.dataPath, "..");
             Uri uriRoot = new Uri(rootDirectory);
             string textBeforeFilePath = ") (at ";
             string textUnityEngineDebug = "UnityEngine.Debug";
             string fileInBuildSlave = "C:/buildslave/unity/";
+            string luaCFunction = "[C]";
+            string luaMethodBefore = ": in function ";
+            string luaFileExt = ".lua";
+            string luaAssetPath = "Assets/Lua/";
             for (int i = 0; i < lines.Length; i++)
             {
                 var line = lines[i];
@@ -838,118 +846,201 @@ namespace ConsoleTiny
                 info.text = info.plain;
                 m_StacktraceLineInfos.Add(info);
 
-                int methodLastIndex = line.IndexOf('(');
-                if (methodLastIndex <= 0 || i == 0)
+                if (i == 0)
                 {
                     continue;
                 }
-                int argsLastIndex = line.IndexOf(')', methodLastIndex);
-                if (argsLastIndex <= 0)
+
+                if (!StacktraceListView_Parse_CSharp(line, info, textBeforeFilePath, fileInBuildSlave, uriRoot))
                 {
-                    continue;
-                }
-                int methodFirstIndex = line.LastIndexOf(':', methodLastIndex);
-                if (methodFirstIndex <= 0)
-                {
-                    methodFirstIndex = line.LastIndexOf('.', methodLastIndex);
-                    if (methodFirstIndex <= 0)
-                    {
-                        continue;
-                    }
-                }
-                string methodString = line.Substring(methodFirstIndex + 1, methodLastIndex - methodFirstIndex - 1);
-
-                string classString;
-                string namespaceString = String.Empty;
-                int classFirstIndex = line.LastIndexOf('.', methodFirstIndex - 1);
-                if (classFirstIndex <= 0)
-                {
-                    classString = line.Substring(0, methodFirstIndex + 1);
-                }
-                else
-                {
-                    classString = line.Substring(classFirstIndex + 1, methodFirstIndex - classFirstIndex);
-                    namespaceString = line.Substring(0, classFirstIndex + 1);
-                }
-
-                string argsString = line.Substring(methodLastIndex, argsLastIndex - methodLastIndex + 1);
-                string fileString = String.Empty;
-                string fileNameString = String.Empty;
-                string fileLineString = String.Empty;
-                bool alphaColor = true;
-
-                int filePathIndex = line.IndexOf(textBeforeFilePath, argsLastIndex, StringComparison.Ordinal);
-                if (filePathIndex > 0)
-                {
-                    filePathIndex += textBeforeFilePath.Length;
-                    if (line[filePathIndex] != '<') // sometimes no url is given, just an id between <>, we can't do an hyperlink
-                    {
-                        string filePathPart = line.Substring(filePathIndex);
-                        int lineIndex = filePathPart.LastIndexOf(":", StringComparison.Ordinal); // LastIndex because the url can contain ':' ex:"C:"
-                        if (lineIndex > 0)
-                        {
-                            int endLineIndex = filePathPart.LastIndexOf(")", StringComparison.Ordinal); // LastIndex because files or folder in the url can contain ')'
-                            if (endLineIndex > 0)
-                            {
-                                string lineString =
-                                    filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
-                                string filePath = filePathPart.Substring(0, lineIndex);
-
-                                if (!filePath.StartsWith(fileInBuildSlave, StringComparison.Ordinal))
-                                {
-                                    alphaColor = false;
-                                }
-
-                                info.filePath = filePath;
-                                info.lineNum = int.Parse(lineString);
-
-                                if (filePath.Length > 2 && filePath[1] == ':')
-                                {
-                                    Uri uriFile = new Uri(filePath);
-                                    Uri relativeUri = uriRoot.MakeRelativeUri(uriFile);
-                                    string relativePath = relativeUri.ToString();
-                                    if (!string.IsNullOrEmpty(relativePath))
-                                    {
-                                        info.plain = info.plain.Replace(filePath, relativePath);
-                                        filePath = relativePath;
-                                    }
-                                }
-
-                                fileNameString = System.IO.Path.GetFileName(filePath);
-                                fileString = textBeforeFilePath.Substring(1) + filePath.Substring(0, filePath.Length - fileNameString.Length);
-                                fileLineString = filePathPart.Substring(lineIndex, endLineIndex - lineIndex + 1);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        fileString = line.Substring(argsLastIndex + 1);
-                    }
-                }
-
-                if (alphaColor)
-                {
-                    info.text = string.Format("<color=#4E5B6A>{0}</color>" +
-                                              "<color=#2A577B>{1}</color>" +
-                                              "<color=#246581>{2}</color>" +
-                                              "<color=#425766>{3}</color>" +
-                                              "<color=#375860>{4}</color>" +
-                                              "<color=#4A6E8A>{5}</color>" +
-                                              "<color=#375860>{6}</color>",
-                        namespaceString, classString, methodString, argsString, fileString, fileNameString, fileLineString);
-                }
-                else
-                {
-                    info.text = string.Format("<color=#6A87A7>{0}</color>" +
-                                              "<color=#1A7ECD>{1}</color>" +
-                                              "<color=#0D9DDC>{2}</color>" +
-                                              "<color=#4F7F9F>{3}</color>" +
-                                              "<color=#375860>{4}</color>" +
-                                              "<color=#4A6E8A>{5}</color>" +
-                                              "<color=#375860>{6}</color>",
-                        namespaceString, classString, methodString, argsString, fileString, fileNameString, fileLineString);
+                    StacktraceListView_Parse_Lua(line, info, luaCFunction, luaMethodBefore, luaFileExt, luaAssetPath);
                 }
             }
+        }
+
+        private bool StacktraceListView_Parse_CSharp(string line, StacktraceLineInfo info, 
+            string textBeforeFilePath, string fileInBuildSlave, Uri uriRoot)
+        {
+            int methodLastIndex = line.IndexOf('(');
+            if (methodLastIndex <= 0)
+            {
+                return false;
+            }
+            int argsLastIndex = line.IndexOf(')', methodLastIndex);
+            if (argsLastIndex <= 0)
+            {
+                return false;
+            }
+            int methodFirstIndex = line.LastIndexOf(':', methodLastIndex);
+            if (methodFirstIndex <= 0)
+            {
+                methodFirstIndex = line.LastIndexOf('.', methodLastIndex);
+                if (methodFirstIndex <= 0)
+                {
+                    return false;
+                }
+            }
+            string methodString = line.Substring(methodFirstIndex + 1, methodLastIndex - methodFirstIndex - 1);
+
+            string classString;
+            string namespaceString = String.Empty;
+            int classFirstIndex = line.LastIndexOf('.', methodFirstIndex - 1);
+            if (classFirstIndex <= 0)
+            {
+                classString = line.Substring(0, methodFirstIndex + 1);
+            }
+            else
+            {
+                classString = line.Substring(classFirstIndex + 1, methodFirstIndex - classFirstIndex);
+                namespaceString = line.Substring(0, classFirstIndex + 1);
+            }
+
+            string argsString = line.Substring(methodLastIndex, argsLastIndex - methodLastIndex + 1);
+            string fileString = String.Empty;
+            string fileNameString = String.Empty;
+            string fileLineString = String.Empty;
+            bool alphaColor = true;
+
+            int filePathIndex = line.IndexOf(textBeforeFilePath, argsLastIndex, StringComparison.Ordinal);
+            if (filePathIndex > 0)
+            {
+                filePathIndex += textBeforeFilePath.Length;
+                if (line[filePathIndex] != '<') // sometimes no url is given, just an id between <>, we can't do an hyperlink
+                {
+                    string filePathPart = line.Substring(filePathIndex);
+                    int lineIndex = filePathPart.LastIndexOf(":", StringComparison.Ordinal); // LastIndex because the url can contain ':' ex:"C:"
+                    if (lineIndex > 0)
+                    {
+                        int endLineIndex = filePathPart.LastIndexOf(")", StringComparison.Ordinal); // LastIndex because files or folder in the url can contain ')'
+                        if (endLineIndex > 0)
+                        {
+                            string lineString =
+                                filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
+                            string filePath = filePathPart.Substring(0, lineIndex);
+
+                            if (!filePath.StartsWith(fileInBuildSlave, StringComparison.Ordinal))
+                            {
+                                alphaColor = false;
+                            }
+
+                            info.filePath = filePath;
+                            info.lineNum = int.Parse(lineString);
+
+                            if (filePath.Length > 2 && filePath[1] == ':')
+                            {
+                                Uri uriFile = new Uri(filePath);
+                                Uri relativeUri = uriRoot.MakeRelativeUri(uriFile);
+                                string relativePath = relativeUri.ToString();
+                                if (!string.IsNullOrEmpty(relativePath))
+                                {
+                                    info.plain = info.plain.Replace(filePath, relativePath);
+                                    filePath = relativePath;
+                                }
+                            }
+
+                            fileNameString = System.IO.Path.GetFileName(filePath);
+                            fileString = textBeforeFilePath.Substring(1) + filePath.Substring(0, filePath.Length - fileNameString.Length);
+                            fileLineString = filePathPart.Substring(lineIndex, endLineIndex - lineIndex + 1);
+                        }
+                    }
+                }
+                else
+                {
+                    fileString = line.Substring(argsLastIndex + 1);
+                }
+            }
+
+            if (alphaColor)
+            {
+                info.text = string.Format("<color=#4E5B6A>{0}</color>" +
+                                          "<color=#2A577B>{1}</color>" +
+                                          "<color=#246581>{2}</color>" +
+                                          "<color=#425766>{3}</color>" +
+                                          "<color=#375860>{4}</color>" +
+                                          "<color=#4A6E8A>{5}</color>" +
+                                          "<color=#375860>{6}</color>",
+                    namespaceString, classString, methodString, argsString, fileString, fileNameString, fileLineString);
+            }
+            else
+            {
+                info.text = string.Format("<color=#6A87A7>{0}</color>" +
+                                          "<color=#1A7ECD>{1}</color>" +
+                                          "<color=#0D9DDC>{2}</color>" +
+                                          "<color=#4F7F9F>{3}</color>" +
+                                          "<color=#375860>{4}</color>" +
+                                          "<color=#4A6E8A>{5}</color>" +
+                                          "<color=#375860>{6}</color>",
+                    namespaceString, classString, methodString, argsString, fileString, fileNameString, fileLineString);
+            }
+
+            return true;
+        }
+
+        private bool StacktraceListView_Parse_Lua(string line, StacktraceLineInfo info, 
+            string luaCFunction, string luaMethodBefore, string luaFileExt, string luaAssetPath)
+        {
+            if (line[0] != '	')
+            {
+                return false;
+            }
+
+            string preMethodString = line;
+            string methodString = String.Empty;
+            int methodFirstIndex = line.IndexOf(luaMethodBefore, StringComparison.Ordinal);
+            if (methodFirstIndex > 0)
+            {
+                methodString = line.Substring(methodFirstIndex + luaMethodBefore.Length);
+                preMethodString = preMethodString.Remove(methodFirstIndex + luaMethodBefore.Length);
+            }
+
+            bool cFunction = line.IndexOf(luaCFunction, 1, StringComparison.Ordinal) == 1;
+            if (!cFunction)
+            {
+                int lineIndex = line.IndexOf(':');
+                if (lineIndex > 0)
+                {
+                    int endLineIndex = line.IndexOf(':', lineIndex + 1);
+                    if (endLineIndex > 0)
+                    {
+                        string lineString =
+                            line.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
+                        string filePath = line.Substring(1, lineIndex - 1);
+                        if (!filePath.EndsWith(luaFileExt, StringComparison.Ordinal))
+                        {
+                            filePath += luaFileExt;
+                        }
+
+                        info.filePath = luaAssetPath + filePath;
+                        info.lineNum = int.Parse(lineString);
+
+                        string namespaceString = String.Empty;
+                        int classFirstIndex = filePath.LastIndexOf('/');
+                        if (classFirstIndex > 0)
+                        {
+                            namespaceString = filePath.Substring(0, classFirstIndex + 1);
+                        }
+
+                        string classString = filePath.Substring(classFirstIndex + 1,
+                            filePath.Length - namespaceString.Length - luaFileExt.Length);
+
+
+                        info.text = string.Format("	<color=#6A87A7>{0}</color>" +
+                                                  "<color=#1A7ECD>{1}</color>" +
+                                                  "<color=#375860>:{2}</color>" +
+                                                  "<color=#375860>{3}</color>" +
+                                                  "<color=#0D9DDC>{4}</color>",
+                            namespaceString, classString, lineString, luaMethodBefore, methodString);
+                    }
+                }
+            }
+            else
+            {
+                info.text = string.Format("<color=#375860>{0}</color>" +
+                                          "<color=#246581>{1}</color>",
+                    preMethodString, methodString);
+            }
+
+            return true;
         }
 
         private void StacktraceListView(Event e, GUIContent tempContent)
@@ -1049,6 +1140,18 @@ namespace ConsoleTiny
             if (rowDoubleClicked != -1)
             {
                 StacktraceListView_Open(m_StacktraceLineInfos[rowDoubleClicked]);
+            }
+        }
+
+        private void StacktraceListView_RowGotDoubleClicked()
+        {
+            foreach (var stacktraceLineInfo in m_StacktraceLineInfos)
+            {
+                if (!string.IsNullOrEmpty(stacktraceLineInfo.filePath))
+                {
+                    StacktraceListView_Open(stacktraceLineInfo);
+                    break;
+                }
             }
         }
 

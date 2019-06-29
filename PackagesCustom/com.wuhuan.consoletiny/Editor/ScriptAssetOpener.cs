@@ -175,7 +175,7 @@ namespace ConsoleTiny
             }
             if (file.StartsWith("Assets/"))
             {
-                var obj = AssetDatabase.LoadAssetAtPath<TextAsset>(file);
+                var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(file);
                 if (obj)
                 {
                     AssetDatabase.OpenAsset(obj, line);

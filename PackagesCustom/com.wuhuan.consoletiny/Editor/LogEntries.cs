@@ -18,7 +18,7 @@ namespace ConsoleTiny
             UnityEditor.LogEntries.SetConsoleFlag(bit, value);
         }
 
-        public static  void Clear()
+        public static void Clear()
         {
             UnityEditor.LogEntries.Clear();
         }
@@ -49,11 +49,6 @@ namespace ConsoleTiny
             return UnityEditor.LogEntries.GetEntryCount(GetRowByFilteredIndex(row));
         }
 
-        public static void RowGotDoubleClicked(int index)
-        {
-            UnityEditor.LogEntries.RowGotDoubleClicked(index);
-        }
-
         internal static void AddMessageWithDoubleClickCallback(UnityEditor.LogEntry outputEntry)
         {
             UnityEditor.LogEntries.AddMessageWithDoubleClickCallback(outputEntry);
@@ -76,9 +71,12 @@ namespace ConsoleTiny
             MatchFilteringText();
         }
 
-        public static void OpenFileOnSpecificLineAndColumn(string filePath, int line, int column)
+        public static void TestFilteringText(string filteringText)
         {
-
+            if (filteredText != filteringText)
+            {
+                SetFilteringText(filteringText);
+            }
         }
 
         private static int GetFilteredIndexCount()
