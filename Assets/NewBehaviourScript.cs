@@ -12,7 +12,7 @@ public class NewBehaviourScript : MonoBehaviour
         Debug.LogError("Opens asset in an external editor, \ntexture application or modelling tool depending on what type of asset it is. \nIf it is a text file, lineNumber instructs the text editor to go to that line. Returns true if asset opened successfully.");
         Debug.Log("abcabc");
         Debug.LogWarning("Description");
-        Test1("aaaa1");
+        Test1("aaaa11");
     }
 
     private void Test1(string ta)

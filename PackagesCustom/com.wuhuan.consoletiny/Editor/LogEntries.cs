@@ -65,18 +65,27 @@ namespace ConsoleTiny
             UnityEditor.LogEntries.EndGettingEntries();
         }
 
-        public static void SetFilteringText(string filteringText)
+        public static int SetFilteringText(string filteringText, int rowFilteredSelected)
         {
+            int rowSelected = rowFilteredSelected == -1 ? -1 : GetRowByFilteredIndex(rowFilteredSelected);
             filteredText = filteringText;
             MatchFilteringText();
+
+            if (rowSelected != -1)
+            {
+                rowSelected = filteredIndex.IndexOf(rowSelected);
+            }
+            return rowSelected;
         }
 
-        public static void TestFilteringText(string filteringText)
+        public static int TestFilteringText(string filteringText, int rowFilteredSelected)
         {
-            if (filteredText != filteringText)
+            if (filteredText != filteringText && !string.IsNullOrEmpty(filteringText))
             {
-                SetFilteringText(filteringText);
+                return SetFilteringText(filteringText, rowFilteredSelected);
             }
+
+            return rowFilteredSelected;
         }
 
         private static int GetFilteredIndexCount()

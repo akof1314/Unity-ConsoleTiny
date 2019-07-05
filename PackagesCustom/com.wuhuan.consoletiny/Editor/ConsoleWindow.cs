@@ -135,6 +135,9 @@ namespace ConsoleTiny
         ListViewState m_ListViewMessage;
         private List<StacktraceLineInfo> m_StacktraceLineInfos;
         private int m_StacktraceLineContextClickRow;
+        private int m_SetFilteringAfterRowSelected;
+        private string[] m_SearchHistory;
+        private double m_LastSetFilteringTime;
         string m_ActiveText = "";
         private int m_ActiveInstanceID = 0;
         bool m_DevBuild;
@@ -308,6 +311,8 @@ namespace ConsoleTiny
             m_SearchText = string.Empty;
             m_StacktraceLineInfos = new List<StacktraceLineInfo>();
             m_StacktraceLineContextClickRow = -1;
+            m_SetFilteringAfterRowSelected = -1;
+            m_SearchHistory = new[] {""};
         }
 
         void OnEnable()
@@ -346,6 +351,8 @@ namespace ConsoleTiny
 
             if (ms_ConsoleWindow == this)
                 ms_ConsoleWindow = null;
+
+            LogEntries.SetFilteringText(String.Empty, -1);
         }
 
         private int RowHeight
@@ -548,7 +555,7 @@ namespace ConsoleTiny
         {
             Event e = Event.current;
             LoadIcons();
-            LogEntries.TestFilteringText(m_SearchText);
+            m_SetFilteringAfterRowSelected = LogEntries.TestFilteringText(m_SearchText, m_SetFilteringAfterRowSelected);
 
             if (!m_HasUpdatedGuiStyles)
             {
@@ -637,6 +644,11 @@ namespace ConsoleTiny
             /////@TODO: Make Frame selected work with ListViewState
             using (new GettingLogEntriesScope(m_ListView))
             {
+                if (m_SetFilteringAfterRowSelected != -1)
+                {
+                    m_ListView.row = m_SetFilteringAfterRowSelected;
+                    m_SetFilteringAfterRowSelected = -1;
+                }
                 int selectedRow = -1;
                 bool openSelectedItem = false;
                 bool collapsed = HasFlag(ConsoleFlags.Collapse);
@@ -787,14 +799,66 @@ namespace ConsoleTiny
             Rect rect = GUILayoutUtility.GetRect(0, EditorGUILayout.kLabelFloatMaxW * 1.5f, EditorGUI.kSingleLineHeight,
                 EditorGUI.kSingleLineHeight, EditorStyles.toolbarSearchField, GUILayout.MinWidth(100),
                 GUILayout.MaxWidth(300));
-            var filteringText = EditorGUI.ToolbarSearchField(rect, searchText, false);
+
+            bool showHistory = m_SearchHistory[0].Length != 0;
+            Rect popupPosition = rect;
+            popupPosition.width = 20;
+            if (showHistory && Event.current.type == EventType.MouseDown && popupPosition.Contains(Event.current.mousePosition))
+            {
+                GUIUtility.keyboardControl = 0;
+                EditorUtility.DisplayCustomMenu(rect, EditorGUIUtility.TempContent(m_SearchHistory), -1, OnSetFilteringHistoryCallback, null);
+                Event.current.Use();
+            }
+
+            var filteringText = EditorGUI.ToolbarSearchField(rect, searchText, showHistory);
+            if (m_SearchText != filteringText)
+            {
+                SetSearchText(filteringText);
+            }
+
+            if (m_LastSetFilteringTime > 0 && !string.IsNullOrEmpty(m_SearchText) && m_LastSetFilteringTime < EditorApplication.timeSinceStartup)
+            {
+                m_LastSetFilteringTime = -1f;
+                if (!showHistory)
+                {
+                    ArrayUtility.RemoveAt(ref m_SearchHistory, 0);
+                }
+                else
+                {
+                    ArrayUtility.Remove(ref m_SearchHistory, m_SearchText);
+                }
+                ArrayUtility.Insert(ref m_SearchHistory, 0, m_SearchText);
+                if (m_SearchHistory.Length > 10)
+                {
+                    ArrayUtility.RemoveAt(ref m_SearchHistory, 10);
+                }
+            }
+        }
+
+        private void SetSearchText(string filteringText)
+        {
             if (m_SearchText != filteringText)
             {
                 m_SearchText = filteringText;
-                LogEntries.SetFilteringText(filteringText);
+                m_SetFilteringAfterRowSelected = LogEntries.SetFilteringText(filteringText, m_ListView.row);
+                if (m_SetFilteringAfterRowSelected != -1)
+                {
+                    // 还是定位到之前的位置
+                    m_ListView.scrollPos.y = (m_SetFilteringAfterRowSelected + 1) * RowHeight - ms_LVHeight;
+                }
                 // Reset the active entry when we change the filtering text
                 SetActiveEntry(null);
+
+                if (!string.IsNullOrEmpty(filteringText))
+                {
+                    m_LastSetFilteringTime = EditorApplication.timeSinceStartup + 3f;
+                }
             }
+        }
+
+        private void OnSetFilteringHistoryCallback(object userData, string[] options, int selected)
+        {
+            SetSearchText(options[selected]);
         }
 
         #region Stacktrace
