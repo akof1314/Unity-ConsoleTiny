@@ -1,11 +1,7 @@
 ﻿using System;
 using UnityEngine;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using System.Text;
 using UnityEditor;
-using UnityEngine.Scripting;
 using UnityEngine.Experimental.Networking.PlayerConnection;
 using UnityEditor.Experimental.Networking.PlayerConnection;
 using ConnectionGUILayout = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUILayout;
@@ -23,8 +19,6 @@ namespace ConsoleTiny
         {
             EditorWindow.GetWindow<ConsoleWindow>();
         }
-
-        internal delegate void EntryDoubleClickedDelegate(LogEntry entry);
 
         //TODO: move this out of here
         internal class Constants
@@ -66,6 +60,7 @@ namespace ConsoleTiny
                 set
                 {
                     ms_logStyleLineCount = value;
+                    LogEntries.wrapped.numberOfLines = value;
 
                     // If Constants hasn't been initialized yet we just skip this for now
                     // and let Init() call this for us in a bit.
@@ -111,6 +106,20 @@ namespace ConsoleTiny
                 var selectedStyle = new GUIStyle("MeTransitionSelect");
                 MessageStyle.onNormal.background = selectedStyle.normal.background;
 
+                bool isProSkin = EditorGUIUtility.isProSkin;
+                LogEntries.EntryWrapped.Constants.colorNamespace = isProSkin ? "6A87A7" : "66677E";
+                LogEntries.EntryWrapped.Constants.colorClass = isProSkin ? "1A7ECD" : "0072A0";
+                LogEntries.EntryWrapped.Constants.colorMethod = isProSkin ? "0D9DDC" : "335B89";
+                LogEntries.EntryWrapped.Constants.colorParameters = isProSkin ? "4F7F9F" : "4C5B72";
+                LogEntries.EntryWrapped.Constants.colorPath = isProSkin ? "375E68" : "7F8B90";
+                LogEntries.EntryWrapped.Constants.colorFilename = isProSkin ? "4A6E8A" : "6285A1";
+                LogEntries.EntryWrapped.Constants.colorNamespaceAlpha = isProSkin ? "4E5B6A" : "87878F";
+                LogEntries.EntryWrapped.Constants.colorClassAlpha = isProSkin ? "2A577B" : "628B9B";
+                LogEntries.EntryWrapped.Constants.colorMethodAlpha = isProSkin ? "246581" : "748393";
+                LogEntries.EntryWrapped.Constants.colorParametersAlpha = isProSkin ? "425766" : "7D838B";
+                LogEntries.EntryWrapped.Constants.colorPathAlpha = isProSkin ? "375860" : "8E989D";
+                LogEntries.EntryWrapped.Constants.colorFilenameAlpha = isProSkin ? "4A6E8A" : "6285A1";
+
                 // If the console window isn't open OnEnable() won't trigger so it will end up with 0 lines,
                 // so we always make sure we read it up when we initialize here.
                 LogStyleLineCount = EditorPrefs.GetInt("ConsoleWindowLogLineCount", 2);
@@ -133,12 +142,7 @@ namespace ConsoleTiny
 
         ListViewState m_ListView;
         ListViewState m_ListViewMessage;
-        private List<StacktraceLineInfo> m_StacktraceLineInfos;
         private int m_StacktraceLineContextClickRow;
-        private int m_SetFilteringAfterRowSelected;
-        private string[] m_SearchHistory;
-        private double m_LastSetFilteringTime;
-        string m_ActiveText = "";
         private int m_ActiveInstanceID = 0;
         bool m_DevBuild;
 
@@ -201,33 +205,6 @@ namespace ConsoleTiny
 
         IConnectionState m_ConsoleAttachToPlayerState;
 
-        [Flags]
-        internal enum Mode
-        {
-            Error = 1 << 0,
-            Assert = 1 << 1,
-            Log = 1 << 2,
-            Fatal = 1 << 4,
-            DontPreprocessCondition = 1 << 5,
-            AssetImportError = 1 << 6,
-            AssetImportWarning = 1 << 7,
-            ScriptingError = 1 << 8,
-            ScriptingWarning = 1 << 9,
-            ScriptingLog = 1 << 10,
-            ScriptCompileError = 1 << 11,
-            ScriptCompileWarning = 1 << 12,
-            StickyError = 1 << 13,
-            MayIgnoreLineNumber = 1 << 14,
-            ReportBug = 1 << 15,
-            DisplayPreviousErrorInStatusBar = 1 << 16,
-            ScriptingException = 1 << 17,
-            DontExtractStacktrace = 1 << 18,
-            ShouldClearOnPlay = 1 << 19,
-            GraphCompileError = 1 << 20,
-            ScriptingAssertion = 1 << 21,
-            VisualScriptingError = 1 << 22
-        };
-
         enum ConsoleFlags
         {
             Collapse = 1 << 0,
@@ -244,7 +221,6 @@ namespace ConsoleTiny
         };
 
         static ConsoleWindow ms_ConsoleWindow = null;
-        private string m_SearchText;
 
         static void ShowConsoleWindowImmediate()
         {
@@ -308,11 +284,7 @@ namespace ConsoleTiny
             position = new Rect(200, 200, 800, 400);
             m_ListView = new ListViewState(0, 0);
             m_ListViewMessage = new ListViewState(0, 14);
-            m_SearchText = string.Empty;
-            m_StacktraceLineInfos = new List<StacktraceLineInfo>();
             m_StacktraceLineContextClickRow = -1;
-            m_SetFilteringAfterRowSelected = -1;
-            m_SearchHistory = new[] {""};
         }
 
         void OnEnable()
@@ -351,8 +323,6 @@ namespace ConsoleTiny
 
             if (ms_ConsoleWindow == this)
                 ms_ConsoleWindow = null;
-
-            LogEntries.SetFilteringText(String.Empty, -1);
         }
 
         private int RowHeight
@@ -363,36 +333,13 @@ namespace ConsoleTiny
             }
         }
 
-        private static bool HasMode(int mode, Mode modeToCheck) { return (mode & (int)modeToCheck) != 0; }
-        private static bool HasFlag(ConsoleFlags flags) { return (LogEntries.consoleFlags & (int)flags) != 0; }
-        private static void SetFlag(ConsoleFlags flags, bool val) { LogEntries.SetConsoleFlag((int)flags, val); }
+        private static bool HasFlag(ConsoleFlags flags) { return (UnityEditor.LogEntries.consoleFlags & (int)flags) != 0; }
+        private static void SetFlag(ConsoleFlags flags, bool val) { UnityEditor.LogEntries.SetConsoleFlag((int)flags, val); }
 
-        static internal Texture2D GetIconForErrorMode(int mode, bool large)
+        private static GUIStyle GetStyleForErrorMode(ConsoleFlags flags, bool isIcon, bool isSmall)
         {
             // Errors
-            if (HasMode(mode, Mode.Fatal | Mode.Assert |
-                Mode.Error | Mode.ScriptingError |
-                Mode.AssetImportError | Mode.ScriptCompileError |
-                Mode.GraphCompileError | Mode.ScriptingAssertion))
-                return large ? iconError : iconErrorSmall;
-            // Warnings
-            if (HasMode(mode, Mode.ScriptCompileWarning | Mode.ScriptingWarning | Mode.AssetImportWarning))
-                return large ? iconWarn : iconWarnSmall;
-            // Logs
-            if (HasMode(mode, Mode.Log | Mode.ScriptingLog))
-                return large ? iconInfo : iconInfoSmall;
-
-            // Nothing
-            return null;
-        }
-
-        static internal GUIStyle GetStyleForErrorMode(int mode, bool isIcon, bool isSmall)
-        {
-            // Errors
-            if (HasMode(mode, Mode.Fatal | Mode.Assert |
-                Mode.Error | Mode.ScriptingError |
-                Mode.AssetImportError | Mode.ScriptCompileError |
-                Mode.GraphCompileError | Mode.ScriptingAssertion))
+            if (flags == ConsoleFlags.LogLevelError)
             {
                 if (isIcon)
                 {
@@ -410,7 +357,7 @@ namespace ConsoleTiny
                 return Constants.ErrorStyle;
             }
             // Warnings
-            if (HasMode(mode, Mode.ScriptCompileWarning | Mode.ScriptingWarning | Mode.AssetImportWarning))
+            if (flags == ConsoleFlags.LogLevelWarning)
             {
                 if (isIcon)
                 {
@@ -444,99 +391,19 @@ namespace ConsoleTiny
             return Constants.LogStyle;
         }
 
-        static internal GUIStyle GetStatusStyleForErrorMode(int mode)
+        void SetActiveEntry(int selectedIndex)
         {
-            // Errors
-            if (HasMode(mode, Mode.Fatal | Mode.Assert |
-                Mode.Error | Mode.ScriptingError |
-                Mode.AssetImportError | Mode.ScriptCompileError |
-                Mode.GraphCompileError | Mode.ScriptingAssertion))
-                return Constants.StatusError;
-            // Warnings
-            if (HasMode(mode, Mode.ScriptCompileWarning | Mode.ScriptingWarning | Mode.AssetImportWarning))
-                return Constants.StatusWarn;
-            // Logs
-            return Constants.StatusLog;
-        }
-
-        static string ContextString(LogEntry entry)
-        {
-            StringBuilder context = new StringBuilder();
-
-            if (HasMode(entry.mode, Mode.Error))
-                context.Append("Error ");
-            else if (HasMode(entry.mode, Mode.Log))
-                context.Append("Log ");
-            else
-                context.Append("Assert ");
-
-            context.Append("in file: ");
-            context.Append(entry.file);
-            context.Append(" at line: ");
-            context.Append(entry.line);
-
-            if (entry.errorNum != 0)
+            m_ListViewMessage.row = -1;
+            if (selectedIndex != -1)
             {
-                context.Append(" and errorNum: ");
-                context.Append(entry.errorNum);
-            }
-
-            return context.ToString();
-        }
-
-        static string GetFirstLine(string s)
-        {
-            int i = s.IndexOf("\n");
-            return (i != -1) ? s.Substring(0, i) : s;
-        }
-
-        static string GetFirstTwoLines(string s)
-        {
-            int i = s.IndexOf("\n");
-            if (i != -1)
-            {
-                i = s.IndexOf("\n", i + 1);
-                if (i != -1)
-                    return s.Substring(0, i);
-            }
-
-            return s;
-        }
-
-        void SetActiveEntry(LogEntry entry)
-        {
-            if (entry != null)
-            {
-                StacktraceListView_Parse(m_ActiveText, entry.condition);
-                m_ActiveText = entry.condition;
+                var instanceID = LogEntries.wrapped.SetSelectedEntry(selectedIndex);
                 // ping object referred by the log entry
-                if (m_ActiveInstanceID != entry.instanceID)
+                if (m_ActiveInstanceID != instanceID)
                 {
-                    m_ActiveInstanceID = entry.instanceID;
-                    if (entry.instanceID != 0)
-                        EditorGUIUtility.PingObject(entry.instanceID);
+                    m_ActiveInstanceID = instanceID;
+                    if (instanceID != 0)
+                        EditorGUIUtility.PingObject(instanceID);
                 }
-            }
-            else
-            {
-                StacktraceListView_Parse(m_ActiveText, string.Empty);
-                m_ActiveText = string.Empty;
-                m_ActiveInstanceID = 0;
-                m_ListView.row = -1;
-                m_ListViewMessage.row = -1;
-            }
-        }
-
-        // Used implicitly with CallStaticMonoMethod("ConsoleWindow", "ShowConsoleRow", param);
-        static void ShowConsoleRow(int row)
-        {
-            ShowConsoleWindow(false);
-
-            if (ms_ConsoleWindow)
-            {
-                ms_ConsoleWindow.m_ListView.row = row;
-                ms_ConsoleWindow.m_ListView.selectionChanged = true;
-                ms_ConsoleWindow.Repaint();
             }
         }
 
@@ -548,14 +415,14 @@ namespace ConsoleTiny
             // We reset the scroll list to auto scrolling whenever the log entry count is modified
             m_ListView.rowHeight = newRowHeight;
             m_ListView.row = -1;
-            m_ListView.scrollPos.y = LogEntries.GetCount() * newRowHeight;
+            m_ListView.scrollPos.y = LogEntries.wrapped.GetCount() * newRowHeight;
         }
 
         void OnGUI()
         {
             Event e = Event.current;
             LoadIcons();
-            m_SetFilteringAfterRowSelected = LogEntries.TestFilteringText(m_SearchText, m_SetFilteringAfterRowSelected);
+            LogEntries.wrapped.UpdateEntries();
 
             if (!m_HasUpdatedGuiStyles)
             {
@@ -572,7 +439,7 @@ namespace ConsoleTiny
                 GUIUtility.keyboardControl = 0;
             }
 
-            int currCount = LogEntries.GetCount();
+            int currCount = LogEntries.wrapped.GetCount();
 
             if (m_ListView.totalRows != currCount && m_ListView.totalRows > 0)
             {
@@ -580,6 +447,22 @@ namespace ConsoleTiny
                 if (m_ListView.scrollPos.y >= m_ListView.rowHeight * m_ListView.totalRows - ms_LVHeight)
                 {
                     m_ListView.scrollPos.y = currCount * RowHeight - ms_LVHeight;
+                }
+            }
+
+            if (LogEntries.wrapped.searchFrame)
+            {
+                LogEntries.wrapped.searchFrame = false;
+                int selectedIndex = LogEntries.wrapped.GetSelectedEntryIndex();
+                if (selectedIndex != -1)
+                {
+                    int showIndex = selectedIndex + 1;
+                    if (currCount > showIndex)
+                    {
+                        int showCount = ms_LVHeight / RowHeight;
+                        showIndex = showIndex + showCount / 2;
+                    }
+                    m_ListView.scrollPos.y = showIndex * RowHeight - ms_LVHeight;
                 }
             }
 
@@ -595,7 +478,7 @@ namespace ConsoleTiny
                 m_ListView.row = -1;
 
                 // scroll to bottom
-                m_ListView.scrollPos.y = LogEntries.GetCount() * RowHeight;
+                m_ListView.scrollPos.y = LogEntries.wrapped.GetCount() * RowHeight;
             }
 
             SetFlag(ConsoleFlags.ClearOnPlay, GUILayout.Toggle(HasFlag(ConsoleFlags.ClearOnPlay), Constants.ClearOnPlayLabel, Constants.MiniButton));
@@ -621,16 +504,16 @@ namespace ConsoleTiny
             int errorCount = 0, warningCount = 0, logCount = 0;
             LogEntries.GetCountsByType(ref errorCount, ref warningCount, ref logCount);
             EditorGUI.BeginChangeCheck();
-            bool setLogFlag = GUILayout.Toggle(HasFlag(ConsoleFlags.LogLevelLog), new GUIContent((logCount <= 999 ? logCount.ToString() : "999+"), logCount > 0 ? iconInfoSmall : iconInfoMono), Constants.MiniButton);
-            bool setWarningFlag = GUILayout.Toggle(HasFlag(ConsoleFlags.LogLevelWarning), new GUIContent((warningCount <= 999 ? warningCount.ToString() : "999+"), warningCount > 0 ? iconWarnSmall : iconWarnMono), Constants.MiniButton);
-            bool setErrorFlag = GUILayout.Toggle(HasFlag(ConsoleFlags.LogLevelError), new GUIContent((errorCount <= 999 ? errorCount.ToString() : "999+"), errorCount > 0 ? iconErrorSmall : iconErrorMono), Constants.MiniButton);
+            bool setLogFlag = GUILayout.Toggle(LogEntries.wrapped.HasFlag((int)ConsoleFlags.LogLevelLog), new GUIContent((logCount <= 999 ? logCount.ToString() : "999+"), logCount > 0 ? iconInfoSmall : iconInfoMono), Constants.MiniButton);
+            bool setWarningFlag = GUILayout.Toggle(LogEntries.wrapped.HasFlag((int)ConsoleFlags.LogLevelWarning), new GUIContent((warningCount <= 999 ? warningCount.ToString() : "999+"), warningCount > 0 ? iconWarnSmall : iconWarnMono), Constants.MiniButton);
+            bool setErrorFlag = GUILayout.Toggle(LogEntries.wrapped.HasFlag((int)ConsoleFlags.LogLevelError), new GUIContent((errorCount <= 999 ? errorCount.ToString() : "999+"), errorCount > 0 ? iconErrorSmall : iconErrorMono), Constants.MiniButton);
             // Active entry index may no longer be valid
             if (EditorGUI.EndChangeCheck())
-                SetActiveEntry(null);
+            { }
 
-            SetFlag(ConsoleFlags.LogLevelLog, setLogFlag);
-            SetFlag(ConsoleFlags.LogLevelWarning, setWarningFlag);
-            SetFlag(ConsoleFlags.LogLevelError, setErrorFlag);
+            LogEntries.wrapped.SetFlag((int)ConsoleFlags.LogLevelLog, setLogFlag);
+            LogEntries.wrapped.SetFlag((int)ConsoleFlags.LogLevelWarning, setWarningFlag);
+            LogEntries.wrapped.SetFlag((int)ConsoleFlags.LogLevelError, setErrorFlag);
 
             GUILayout.EndHorizontal();
 
@@ -644,11 +527,6 @@ namespace ConsoleTiny
             /////@TODO: Make Frame selected work with ListViewState
             using (new GettingLogEntriesScope(m_ListView))
             {
-                if (m_SetFilteringAfterRowSelected != -1)
-                {
-                    m_ListView.row = m_SetFilteringAfterRowSelected;
-                    m_SetFilteringAfterRowSelected = -1;
-                }
                 int selectedRow = -1;
                 bool openSelectedItem = false;
                 bool collapsed = HasFlag(ConsoleFlags.Collapse);
@@ -656,33 +534,35 @@ namespace ConsoleTiny
                 {
                     if (e.type == EventType.MouseDown && e.button == 0 && el.position.Contains(e.mousePosition))
                     {
-                        selectedRow = m_ListView.row;
+                        m_ListView.row = el.row;
+                        selectedRow = el.row;
                         if (e.clickCount == 2)
                             openSelectedItem = true;
                     }
                     else if (e.type == EventType.Repaint)
                     {
                         int mode = 0;
-                        string text = null;
-                        LogEntries.GetLinesAndModeFromEntryInternal(el.row, Constants.LogStyleLineCount, ref mode, ref text);
+                        string text = LogEntries.wrapped.GetEntryLinesAndFlag(el.row, ref mode);
+                        ConsoleFlags flag = (ConsoleFlags) mode;
+                        bool isSelected = LogEntries.wrapped.IsEntrySelected(el.row);
 
                         // Draw the background
                         GUIStyle s = el.row % 2 == 0 ? Constants.OddBackground : Constants.EvenBackground;
-                        s.Draw(el.position, false, false, m_ListView.row == el.row, false);
+                        s.Draw(el.position, false, false, isSelected, false);
 
                         // Draw the icon
-                        GUIStyle iconStyle = GetStyleForErrorMode(mode, true, Constants.LogStyleLineCount == 1);
-                        iconStyle.Draw(el.position, false, false, m_ListView.row == el.row, false);
+                        GUIStyle iconStyle = GetStyleForErrorMode(flag, true, Constants.LogStyleLineCount == 1);
+                        iconStyle.Draw(el.position, false, false, isSelected, false);
 
                         // Draw the text
                         tempContent.text = text;
-                        GUIStyle errorModeStyle = GetStyleForErrorMode(mode, false, Constants.LogStyleLineCount == 1);
-                        errorModeStyle.Draw(el.position, tempContent, id, m_ListView.row == el.row);
+                        GUIStyle errorModeStyle = GetStyleForErrorMode(flag, false, Constants.LogStyleLineCount == 1);
+                        errorModeStyle.Draw(el.position, tempContent, id, isSelected);
 
                         if (collapsed)
                         {
                             Rect badgeRect = el.position;
-                            tempContent.text = LogEntries.GetEntryCount(el.row).ToString(CultureInfo.InvariantCulture);
+                            tempContent.text = LogEntries.wrapped.GetEntryCount(el.row).ToString(CultureInfo.InvariantCulture);
                             Vector2 badgeSize = Constants.CountBadge.CalcSize(tempContent);
                             badgeRect.xMin = badgeRect.xMax - badgeSize.x;
                             badgeRect.yMin += ((badgeRect.yMax - badgeRect.yMin) - badgeSize.y) * 0.5f;
@@ -701,20 +581,12 @@ namespace ConsoleTiny
                 // Make sure the selected entry is up to date
                 if (m_ListView.totalRows == 0 || m_ListView.row >= m_ListView.totalRows || m_ListView.row < 0)
                 {
-                    if (m_ActiveText.Length != 0)
-                        SetActiveEntry(null);
                 }
                 else
                 {
-                    LogEntry entry = new LogEntry();
-                    LogEntries.GetEntryInternal(m_ListView.row, entry);
-                    SetActiveEntry(entry);
-
-                    // see if selected entry changed. if so - clear additional info
-                    LogEntries.GetEntryInternal(m_ListView.row, entry);
-                    if (m_ListView.selectionChanged || !m_ActiveText.Equals(entry.condition))
+                    if (m_ListView.selectionChanged)
                     {
-                        SetActiveEntry(entry);
+                        SetActiveEntry(m_ListView.row);
                     }
                 }
 
@@ -736,31 +608,26 @@ namespace ConsoleTiny
 
                 if (selectedRow != -1)
                 {
-                    m_ListViewMessage.row = -1;
+                    SetActiveEntry(selectedRow);
                 }
             }
 
             // Prevent dead locking in EditorMonoConsole by delaying callbacks (which can log to the console) until after LogEntries.EndGettingEntries() has been
             // called (this releases the mutex in EditorMonoConsole so logging again is allowed). Fix for case 1081060.
             if (rowDoubleClicked != -1)
-                StacktraceListView_RowGotDoubleClicked();
+                LogEntries.wrapped.StacktraceListView_RowGotDoubleClicked();
 
             EditorGUIUtility.SetIconSize(Vector2.zero);
 
-            // Display active text (We want word wrapped text with a vertical scrollbar)
-            //m_TextScroll = GUILayout.BeginScrollView(m_TextScroll, Constants.Box);
-            //float height = Constants.MessageStyle.CalcHeight(new GUIContent(m_ActiveText), position.width);
-            //EditorGUILayoutTiny.SelectableLabel(m_ActiveText, Constants.MessageStyle, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true), GUILayout.MinHeight(height));
-            //GUILayout.EndScrollView();
             StacktraceListView(e, tempContent);
 
             SplitterGUILayout.EndVerticalSplit();
 
             // Copy & Paste selected item
-            if ((e.type == EventType.ValidateCommand || e.type == EventType.ExecuteCommand) && e.commandName == "Copy" && m_ActiveText != string.Empty)
+            if ((e.type == EventType.ValidateCommand || e.type == EventType.ExecuteCommand) && e.commandName == "Copy")
             {
                 if (e.type == EventType.ExecuteCommand)
-                    EditorGUIUtility.systemCopyBuffer = m_ActiveText;
+                    LogEntries.wrapped.StacktraceListView_CopyAll();
                 e.Use();
             }
         }
@@ -779,7 +646,7 @@ namespace ConsoleTiny
                     e.Use();
             }
 
-            string searchText = m_SearchText;
+            string searchText = LogEntries.wrapped.searchString;
             if (e.type == EventType.KeyDown)
             {
                 if (e.keyCode == KeyCode.Escape)
@@ -800,345 +667,42 @@ namespace ConsoleTiny
                 EditorGUI.kSingleLineHeight, EditorStyles.toolbarSearchField, GUILayout.MinWidth(100),
                 GUILayout.MaxWidth(300));
 
-            bool showHistory = m_SearchHistory[0].Length != 0;
+            bool showHistory = LogEntries.wrapped.searchHistory[0].Length != 0;
             Rect popupPosition = rect;
             popupPosition.width = 20;
             if (showHistory && Event.current.type == EventType.MouseDown && popupPosition.Contains(Event.current.mousePosition))
             {
                 GUIUtility.keyboardControl = 0;
-                EditorUtility.DisplayCustomMenu(rect, EditorGUIUtility.TempContent(m_SearchHistory), -1, OnSetFilteringHistoryCallback, null);
+                EditorUtility.DisplayCustomMenu(rect, EditorGUIUtility.TempContent(LogEntries.wrapped.searchHistory), -1, OnSetFilteringHistoryCallback, null);
                 Event.current.Use();
             }
 
-            var filteringText = EditorGUI.ToolbarSearchField(rect, searchText, showHistory);
-            if (m_SearchText != filteringText)
-            {
-                SetSearchText(filteringText);
-            }
-
-            if (m_LastSetFilteringTime > 0 && !string.IsNullOrEmpty(m_SearchText) && m_LastSetFilteringTime < EditorApplication.timeSinceStartup)
-            {
-                m_LastSetFilteringTime = -1f;
-                if (!showHistory)
-                {
-                    ArrayUtility.RemoveAt(ref m_SearchHistory, 0);
-                }
-                else
-                {
-                    ArrayUtility.Remove(ref m_SearchHistory, m_SearchText);
-                }
-                ArrayUtility.Insert(ref m_SearchHistory, 0, m_SearchText);
-                if (m_SearchHistory.Length > 10)
-                {
-                    ArrayUtility.RemoveAt(ref m_SearchHistory, 10);
-                }
-            }
-        }
-
-        private void SetSearchText(string filteringText)
-        {
-            if (m_SearchText != filteringText)
-            {
-                m_SearchText = filteringText;
-                m_SetFilteringAfterRowSelected = LogEntries.SetFilteringText(filteringText, m_ListView.row);
-                if (m_SetFilteringAfterRowSelected != -1)
-                {
-                    // 还是定位到之前的位置
-                    m_ListView.scrollPos.y = (m_SetFilteringAfterRowSelected + 1) * RowHeight - ms_LVHeight;
-                }
-                // Reset the active entry when we change the filtering text
-                SetActiveEntry(null);
-
-                if (!string.IsNullOrEmpty(filteringText))
-                {
-                    m_LastSetFilteringTime = EditorApplication.timeSinceStartup + 3f;
-                }
-            }
+            LogEntries.wrapped.searchString = EditorGUI.ToolbarSearchField(rect, searchText, showHistory);
         }
 
         private void OnSetFilteringHistoryCallback(object userData, string[] options, int selected)
         {
-            SetSearchText(options[selected]);
+            LogEntries.wrapped.searchString = options[selected];
         }
 
         #region Stacktrace
-
-        private class StacktraceLineInfo
-        {
-            public string plain;
-            public string text;
-            public string filePath;
-            public int lineNum;
-        }
-
-        private void StacktraceListView_Parse(string preActiveText, string nowActiveText)
-        {
-            if (preActiveText == nowActiveText)
-            {
-                if (!(nowActiveText.Length > 0 && m_StacktraceLineInfos.Count == 0))
-                {
-                    return;
-                }
-            }
-            var lines = nowActiveText.Split(new string[] { "\n" }, StringSplitOptions.None);
-            m_StacktraceLineInfos.Clear();
-            m_ListViewMessage.scrollPos.y = 0;
-
-            string rootDirectory = System.IO.Path.Combine(Application.dataPath, "..");
-            Uri uriRoot = new Uri(rootDirectory);
-            string textBeforeFilePath = ") (at ";
-            string textUnityEngineDebug = "UnityEngine.Debug";
-            string fileInBuildSlave = "C:/buildslave/unity/";
-            string luaCFunction = "[C]";
-            string luaMethodBefore = ": in function ";
-            string luaFileExt = ".lua";
-            string luaAssetPath = "Assets/Lua/";
-            for (int i = 0; i < lines.Length; i++)
-            {
-                var line = lines[i];
-                if (string.IsNullOrEmpty(line))
-                {
-                    continue;
-                }
-                if (line.StartsWith(textUnityEngineDebug))
-                {
-                    continue;
-                }
-
-                StacktraceLineInfo info = new StacktraceLineInfo();
-                info.plain = line;
-                info.text = info.plain;
-                m_StacktraceLineInfos.Add(info);
-
-                if (i == 0)
-                {
-                    continue;
-                }
-
-                if (!StacktraceListView_Parse_CSharp(line, info, textBeforeFilePath, fileInBuildSlave, uriRoot))
-                {
-                    StacktraceListView_Parse_Lua(line, info, luaCFunction, luaMethodBefore, luaFileExt, luaAssetPath);
-                }
-            }
-        }
-
-        private bool StacktraceListView_Parse_CSharp(string line, StacktraceLineInfo info, 
-            string textBeforeFilePath, string fileInBuildSlave, Uri uriRoot)
-        {
-            int methodLastIndex = line.IndexOf('(');
-            if (methodLastIndex <= 0)
-            {
-                return false;
-            }
-            int argsLastIndex = line.IndexOf(')', methodLastIndex);
-            if (argsLastIndex <= 0)
-            {
-                return false;
-            }
-            int methodFirstIndex = line.LastIndexOf(':', methodLastIndex);
-            if (methodFirstIndex <= 0)
-            {
-                methodFirstIndex = line.LastIndexOf('.', methodLastIndex);
-                if (methodFirstIndex <= 0)
-                {
-                    return false;
-                }
-            }
-            string methodString = line.Substring(methodFirstIndex + 1, methodLastIndex - methodFirstIndex - 1);
-
-            string classString;
-            string namespaceString = String.Empty;
-            int classFirstIndex = line.LastIndexOf('.', methodFirstIndex - 1);
-            if (classFirstIndex <= 0)
-            {
-                classString = line.Substring(0, methodFirstIndex + 1);
-            }
-            else
-            {
-                classString = line.Substring(classFirstIndex + 1, methodFirstIndex - classFirstIndex);
-                namespaceString = line.Substring(0, classFirstIndex + 1);
-            }
-
-            string argsString = line.Substring(methodLastIndex, argsLastIndex - methodLastIndex + 1);
-            string fileString = String.Empty;
-            string fileNameString = String.Empty;
-            string fileLineString = String.Empty;
-            bool alphaColor = true;
-
-            int filePathIndex = line.IndexOf(textBeforeFilePath, argsLastIndex, StringComparison.Ordinal);
-            if (filePathIndex > 0)
-            {
-                filePathIndex += textBeforeFilePath.Length;
-                if (line[filePathIndex] != '<') // sometimes no url is given, just an id between <>, we can't do an hyperlink
-                {
-                    string filePathPart = line.Substring(filePathIndex);
-                    int lineIndex = filePathPart.LastIndexOf(":", StringComparison.Ordinal); // LastIndex because the url can contain ':' ex:"C:"
-                    if (lineIndex > 0)
-                    {
-                        int endLineIndex = filePathPart.LastIndexOf(")", StringComparison.Ordinal); // LastIndex because files or folder in the url can contain ')'
-                        if (endLineIndex > 0)
-                        {
-                            string lineString =
-                                filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
-                            string filePath = filePathPart.Substring(0, lineIndex);
-
-                            if (!filePath.StartsWith(fileInBuildSlave, StringComparison.Ordinal))
-                            {
-                                alphaColor = false;
-                            }
-
-                            info.filePath = filePath;
-                            info.lineNum = int.Parse(lineString);
-
-                            if (filePath.Length > 2 && filePath[1] == ':')
-                            {
-                                Uri uriFile = new Uri(filePath);
-                                Uri relativeUri = uriRoot.MakeRelativeUri(uriFile);
-                                string relativePath = relativeUri.ToString();
-                                if (!string.IsNullOrEmpty(relativePath))
-                                {
-                                    info.plain = info.plain.Replace(filePath, relativePath);
-                                    filePath = relativePath;
-                                }
-                            }
-
-                            fileNameString = System.IO.Path.GetFileName(filePath);
-                            fileString = textBeforeFilePath.Substring(1) + filePath.Substring(0, filePath.Length - fileNameString.Length);
-                            fileLineString = filePathPart.Substring(lineIndex, endLineIndex - lineIndex + 1);
-                        }
-                    }
-                }
-                else
-                {
-                    fileString = line.Substring(argsLastIndex + 1);
-                }
-            }
-
-            if (alphaColor)
-            {
-                info.text = string.Format("<color=#4E5B6A>{0}</color>" +
-                                          "<color=#2A577B>{1}</color>" +
-                                          "<color=#246581>{2}</color>" +
-                                          "<color=#425766>{3}</color>" +
-                                          "<color=#375860>{4}</color>" +
-                                          "<color=#4A6E8A>{5}</color>" +
-                                          "<color=#375860>{6}</color>",
-                    namespaceString, classString, methodString, argsString, fileString, fileNameString, fileLineString);
-            }
-            else
-            {
-                info.text = string.Format("<color=#6A87A7>{0}</color>" +
-                                          "<color=#1A7ECD>{1}</color>" +
-                                          "<color=#0D9DDC>{2}</color>" +
-                                          "<color=#4F7F9F>{3}</color>" +
-                                          "<color=#375860>{4}</color>" +
-                                          "<color=#4A6E8A>{5}</color>" +
-                                          "<color=#375860>{6}</color>",
-                    namespaceString, classString, methodString, argsString, fileString, fileNameString, fileLineString);
-            }
-
-            return true;
-        }
-
-        private bool StacktraceListView_Parse_Lua(string line, StacktraceLineInfo info, 
-            string luaCFunction, string luaMethodBefore, string luaFileExt, string luaAssetPath)
-        {
-            if (line[0] != '	')
-            {
-                return false;
-            }
-
-            string preMethodString = line;
-            string methodString = String.Empty;
-            int methodFirstIndex = line.IndexOf(luaMethodBefore, StringComparison.Ordinal);
-            if (methodFirstIndex > 0)
-            {
-                methodString = line.Substring(methodFirstIndex + luaMethodBefore.Length);
-                preMethodString = preMethodString.Remove(methodFirstIndex + luaMethodBefore.Length);
-            }
-
-            bool cFunction = line.IndexOf(luaCFunction, 1, StringComparison.Ordinal) == 1;
-            if (!cFunction)
-            {
-                int lineIndex = line.IndexOf(':');
-                if (lineIndex > 0)
-                {
-                    int endLineIndex = line.IndexOf(':', lineIndex + 1);
-                    if (endLineIndex > 0)
-                    {
-                        string lineString =
-                            line.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
-                        string filePath = line.Substring(1, lineIndex - 1);
-                        if (!filePath.EndsWith(luaFileExt, StringComparison.Ordinal))
-                        {
-                            filePath += luaFileExt;
-                        }
-
-                        info.filePath = luaAssetPath + filePath;
-                        info.lineNum = int.Parse(lineString);
-
-                        string namespaceString = String.Empty;
-                        int classFirstIndex = filePath.LastIndexOf('/');
-                        if (classFirstIndex > 0)
-                        {
-                            namespaceString = filePath.Substring(0, classFirstIndex + 1);
-                        }
-
-                        string classString = filePath.Substring(classFirstIndex + 1,
-                            filePath.Length - namespaceString.Length - luaFileExt.Length);
-
-
-                        info.text = string.Format("	<color=#6A87A7>{0}</color>" +
-                                                  "<color=#1A7ECD>{1}</color>" +
-                                                  "<color=#375860>:{2}</color>" +
-                                                  "<color=#375860>{3}</color>" +
-                                                  "<color=#0D9DDC>{4}</color>",
-                            namespaceString, classString, lineString, luaMethodBefore, methodString);
-                    }
-                }
-            }
-            else
-            {
-                info.text = string.Format("<color=#375860>{0}</color>" +
-                                          "<color=#246581>{1}</color>",
-                    preMethodString, methodString);
-            }
-
-            return true;
-        }
-
+        
         private void StacktraceListView(Event e, GUIContent tempContent)
         {
-            var maxLine = -1;
-            var maxLineLen = -1;
-            for (int i = 0; i < m_StacktraceLineInfos.Count; i++)
-            {
-                if (maxLineLen < m_StacktraceLineInfos[i].plain.Length)
-                {
-                    maxLineLen = m_StacktraceLineInfos[i].plain.Length;
-                    maxLine = i;
-                }
-            }
-
-            float maxWidth = 1f;
-            if (maxLine != -1)
-            {
-                tempContent.text = m_StacktraceLineInfos[maxLine].plain;
-                maxWidth = Constants.MessageStyle.CalcSize(tempContent).x;
-            }
+            float maxWidth = LogEntries.wrapped.StacktraceListView_GetMaxWidth(tempContent, Constants.MessageStyle);
 
             if (m_StacktraceLineContextClickRow != -1)
             {
-                var stacktraceLineInfo = m_StacktraceLineInfos[m_StacktraceLineContextClickRow];
+                var stacktraceLineInfoIndex = m_StacktraceLineContextClickRow;
                 m_StacktraceLineContextClickRow = -1;
                 GenericMenu menu = new GenericMenu();
-                if (!string.IsNullOrEmpty(stacktraceLineInfo.filePath))
+                if (LogEntries.wrapped.StacktraceListView_CanOpen(stacktraceLineInfoIndex))
                 {
-                    menu.AddItem(new GUIContent("Open"), false, StacktraceListView_Open, stacktraceLineInfo);
+                    menu.AddItem(new GUIContent("Open"), false, LogEntries.wrapped.StacktraceListView_Open, stacktraceLineInfoIndex);
                     menu.AddSeparator("");
                 }
-                menu.AddItem(new GUIContent("Copy"), false, StacktraceListView_Copy, stacktraceLineInfo);
-                menu.AddItem(new GUIContent("Copy All"), false, StacktraceListView_CopyAll);
+                menu.AddItem(new GUIContent("Copy"), false, LogEntries.wrapped.StacktraceListView_Copy, stacktraceLineInfoIndex);
+                menu.AddItem(new GUIContent("Copy All"), false, LogEntries.wrapped.StacktraceListView_CopyAll);
                 menu.ShowAsContext();
             }
 
@@ -1146,7 +710,7 @@ namespace ConsoleTiny
             int rowDoubleClicked = -1;
             int selectedRow = -1;
             bool openSelectedItem = false;
-            m_ListViewMessage.totalRows = m_StacktraceLineInfos.Count;
+            m_ListViewMessage.totalRows = LogEntries.wrapped.StacktraceListView_GetCount();
             GUILayout.BeginHorizontal(Constants.Box);
             m_ListViewMessage.scrollPos = EditorGUILayout.BeginScrollView(m_ListViewMessage.scrollPos);
             ListViewGUI.ilvState.beganHorizontal = true;
@@ -1173,7 +737,7 @@ namespace ConsoleTiny
                 }
                 else if (e.type == EventType.Repaint)
                 {
-                    tempContent.text = m_StacktraceLineInfos[el.row].text;
+                    tempContent.text = LogEntries.wrapped.StacktraceListView_GetLine(el.row);
                     rect = el.position;
                     if (rect.width < maxWidth)
                     {
@@ -1203,64 +767,11 @@ namespace ConsoleTiny
 
             if (rowDoubleClicked != -1)
             {
-                StacktraceListView_Open(m_StacktraceLineInfos[rowDoubleClicked]);
+                LogEntries.wrapped.StacktraceListView_Open(rowDoubleClicked);
             }
-        }
-
-        private void StacktraceListView_RowGotDoubleClicked()
-        {
-            foreach (var stacktraceLineInfo in m_StacktraceLineInfos)
-            {
-                if (!string.IsNullOrEmpty(stacktraceLineInfo.filePath))
-                {
-                    StacktraceListView_Open(stacktraceLineInfo);
-                    break;
-                }
-            }
-        }
-
-        private void StacktraceListView_Open(object userData)
-        {
-            var stacktraceLineInfo = userData as StacktraceLineInfo;
-            if (stacktraceLineInfo != null)
-            {
-                var filePath = stacktraceLineInfo.filePath;
-                var lineNum = stacktraceLineInfo.lineNum;
-                ScriptAssetOpener.OpenAsset(filePath, lineNum);
-            }
-        }
-
-        private void StacktraceListView_Copy(object userData)
-        {
-            var stacktraceLineInfo = userData as StacktraceLineInfo;
-            if (stacktraceLineInfo != null)
-            {
-                EditorGUIUtility.systemCopyBuffer = stacktraceLineInfo.plain;
-            }
-        }
-
-        private void StacktraceListView_CopyAll()
-        {
-            StringBuilder stringBuilder = new StringBuilder();
-            foreach (var stacktraceLineInfo in m_StacktraceLineInfos)
-            {
-                stringBuilder.AppendLine(stacktraceLineInfo.plain);
-            }
-
-            EditorGUIUtility.systemCopyBuffer = stringBuilder.ToString();
         }
 
 #endregion
-
-        public static bool GetConsoleErrorPause()
-        {
-            return HasFlag(ConsoleFlags.ErrorPause);
-        }
-
-        public static void SetConsoleErrorPause(bool enabled)
-        {
-            SetFlag(ConsoleFlags.ErrorPause, enabled);
-        }
 
         public struct StackTraceLogTypeData
         {
@@ -1285,8 +796,9 @@ namespace ConsoleTiny
             if (Application.platform == RuntimePlatform.OSXEditor)
                 menu.AddItem(EditorGUIUtility.TrTextContent("Open Player Log"), false, UnityEditorInternal.InternalEditorUtility.OpenPlayerConsole);
             menu.AddItem(EditorGUIUtility.TrTextContent("Open Editor Log"), false, UnityEditorInternal.InternalEditorUtility.OpenEditorConsole);
+            menu.AddItem(EditorGUIUtility.TrTextContent("Export Console Log"), false, LogEntries.wrapped.ExportLog);
 
-            menu.AddItem(EditorGUIUtility.TrTextContent("Show Timestamp"), HasFlag(ConsoleFlags.ShowTimestamp), SetTimestamp);
+            menu.AddItem(EditorGUIUtility.TrTextContent("Show Timestamp"), LogEntries.wrapped.showTimestamp, SetTimestamp);
 
             for (int i = 1; i <= 10; ++i)
             {
@@ -1299,7 +811,7 @@ namespace ConsoleTiny
 
         private void SetTimestamp()
         {
-            SetFlag(ConsoleFlags.ShowTimestamp, !HasFlag(ConsoleFlags.ShowTimestamp));
+            LogEntries.wrapped.showTimestamp = !LogEntries.wrapped.showTimestamp;
         }
 
         private void SetLogLineCount(object obj)
@@ -1343,22 +855,6 @@ namespace ConsoleTiny
                     ToggleLogStackTracesForAll, stackTraceLogType);
             }
         }
-
-        private static event EntryDoubleClickedDelegate entryWithManagedCallbackDoubleClicked;
-
-        //[RequiredByNativeCode]
-        private static void SendEntryDoubleClicked(LogEntry entry)
-        {
-            if (ConsoleWindow.entryWithManagedCallbackDoubleClicked != null)
-                ConsoleWindow.entryWithManagedCallbackDoubleClicked(entry);
-        }
-
-        // This method is used by the Visual Scripting project. Please do not delete. Contact @husseink for more information.
-        internal void AddMessageWithDoubleClickCallback(string condition, string file, int mode, int instanceID)
-        {
-            var outputEntry = new LogEntry { condition = condition, file = file, mode = mode, instanceID = instanceID };
-            LogEntries.AddMessageWithDoubleClickCallback(outputEntry);
-        }
     }
 
     internal class GettingLogEntriesScope : IDisposable
@@ -1367,14 +863,13 @@ namespace ConsoleTiny
 
         public GettingLogEntriesScope(ListViewState listView)
         {
-            listView.totalRows = LogEntries.StartGettingEntries();
+            listView.totalRows = LogEntries.wrapped.GetCount();
         }
 
         public void Dispose()
         {
             if (m_Disposed)
                 return;
-            LogEntries.EndGettingEntries();
             m_Disposed = true;
         }
 

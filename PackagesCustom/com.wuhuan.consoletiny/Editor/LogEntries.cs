@@ -1,23 +1,14 @@
-﻿using System.Collections.Generic;
-using System.Runtime.InteropServices;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using UnityEditor;
+using UnityEngine;
 
 namespace ConsoleTiny
 {
     public class LogEntries
     {
-        private static string filteredText;
-        private static List<int> filteredIndex = new List<int>();
-
-        public static int consoleFlags
-        {
-            get { return UnityEditor.LogEntries.consoleFlags; }
-        }
-
-        public static void SetConsoleFlag(int bit, bool value)
-        {
-            UnityEditor.LogEntries.SetConsoleFlag(bit, value);
-        }
-
         public static void Clear()
         {
             UnityEditor.LogEntries.Clear();
@@ -28,102 +19,781 @@ namespace ConsoleTiny
             UnityEditor.LogEntries.GetCountsByType(ref errorCount, ref warningCount, ref logCount);
         }
 
-        public static int GetCount()
-        {
-            MatchFilteringText();
-            return GetFilteredIndexCount();
-        }
+        internal static EntryWrapped wrapped = new EntryWrapped();
 
-        public static void GetLinesAndModeFromEntryInternal(int row, int numberOfLines, ref int mask, [In, Out] ref string outString)
+        internal class EntryWrapped
         {
-            UnityEditor.LogEntries.GetLinesAndModeFromEntryInternal(GetRowByFilteredIndex(row), numberOfLines, ref mask, ref outString);
-        }
-
-        internal static bool GetEntryInternal(int row, [Out] UnityEditor.LogEntry outputEntry)
-        {
-            return UnityEditor.LogEntries.GetEntryInternal(GetRowByFilteredIndex(row), outputEntry);
-        }
-
-        public static int GetEntryCount(int row)
-        {
-            return UnityEditor.LogEntries.GetEntryCount(GetRowByFilteredIndex(row));
-        }
-
-        internal static void AddMessageWithDoubleClickCallback(UnityEditor.LogEntry outputEntry)
-        {
-            UnityEditor.LogEntries.AddMessageWithDoubleClickCallback(outputEntry);
-        }
-
-        public static int StartGettingEntries()
-        {
-            UnityEditor.LogEntries.StartGettingEntries();
-            return GetFilteredIndexCount();
-        }
-
-        public static void EndGettingEntries()
-        {
-            UnityEditor.LogEntries.EndGettingEntries();
-        }
-
-        public static int SetFilteringText(string filteringText, int rowFilteredSelected)
-        {
-            int rowSelected = rowFilteredSelected == -1 ? -1 : GetRowByFilteredIndex(rowFilteredSelected);
-            filteredText = filteringText;
-            MatchFilteringText();
-
-            if (rowSelected != -1)
+            private class EntryInfo
             {
-                rowSelected = filteredIndex.IndexOf(rowSelected);
-            }
-            return rowSelected;
-        }
-
-        public static int TestFilteringText(string filteringText, int rowFilteredSelected)
-        {
-            if (filteredText != filteringText && !string.IsNullOrEmpty(filteringText))
-            {
-                return SetFilteringText(filteringText, rowFilteredSelected);
+                public int row;
+                public string lines;
+                public string text;
+                public ConsoleFlags flags;
+                public LogEntry entry;
+                public List<StacktraceLineInfo> stacktraceLineInfos;
             }
 
-            return rowFilteredSelected;
-        }
-
-        private static int GetFilteredIndexCount()
-        {
-            return filteredIndex.Count;
-        }
-
-        private static int GetRowByFilteredIndex(int index)
-        {
-            return filteredIndex[index];
-        }
-
-        private static void MatchFilteringText()
-        {
-            filteredIndex.Clear();
-            int count = UnityEditor.LogEntries.GetCount();
-            if (string.IsNullOrEmpty(filteredText))
+            [Flags]
+            internal enum Mode
             {
-                for (int i = 0; i < count; i++)
+                Error = 1 << 0,
+                Assert = 1 << 1,
+                Log = 1 << 2,
+                Fatal = 1 << 4,
+                DontPreprocessCondition = 1 << 5,
+                AssetImportError = 1 << 6,
+                AssetImportWarning = 1 << 7,
+                ScriptingError = 1 << 8,
+                ScriptingWarning = 1 << 9,
+                ScriptingLog = 1 << 10,
+                ScriptCompileError = 1 << 11,
+                ScriptCompileWarning = 1 << 12,
+                StickyError = 1 << 13,
+                MayIgnoreLineNumber = 1 << 14,
+                ReportBug = 1 << 15,
+                DisplayPreviousErrorInStatusBar = 1 << 16,
+                ScriptingException = 1 << 17,
+                DontExtractStacktrace = 1 << 18,
+                ShouldClearOnPlay = 1 << 19,
+                GraphCompileError = 1 << 20,
+                ScriptingAssertion = 1 << 21,
+                VisualScriptingError = 1 << 22
+            };
+
+            enum ConsoleFlags
+            {
+                LogLevelLog = 1 << 7,
+                LogLevelWarning = 1 << 8,
+                LogLevelError = 1 << 9,
+                ShowTimestamp = 1 << 10,
+            };
+
+            public int numberOfLines
+            {
+                private get { return m_NumberOfLines; }
+                set { m_NumberOfLines = value; ResetEntriesForNumberLines(); }
+            }
+
+            public bool showTimestamp
+            {
+                get { return m_ShowTimestamp; }
+                set
                 {
-                    filteredIndex.Add(i);
-                }
-                return;
-            }
-
-            UnityEditor.LogEntries.StartGettingEntries();
-            for (int i = 0; i < count; i++)
-            {
-                int mode = 0;
-                string text = null;
-                UnityEditor.LogEntries.GetLinesAndModeFromEntryInternal(i, 1, ref mode, ref text);
-
-                if (!string.IsNullOrEmpty(text) && text.Contains(filteredText))
-                {
-                    filteredIndex.Add(i);
+                    m_ShowTimestamp = value;
+                    EditorPrefs.SetBool("ConsoleTiny_ShowTimestamp", value);
+                    ResetEntriesForNumberLines();
                 }
             }
-            UnityEditor.LogEntries.EndGettingEntries();
+
+            public string searchString
+            {
+                get { return m_SearchString; }
+                set { m_SearchStringComing = value; }
+            }
+
+            public string[] searchHistory = new[] { "" };
+
+            public bool searchFrame { get; set; }
+
+            private int m_ConsoleFlags;
+            private int m_ConsoleFlagsComing;
+            private string m_SearchString;
+            private string m_SearchStringComing;
+            private double m_LastSearchStringTime;
+
+            private bool m_Init;
+            private int m_NumberOfLines;
+            private bool m_ShowTimestamp;
+            private int m_LastEntryCount = -1;
+            private EntryInfo m_SelectedInfo;
+            private readonly List<EntryInfo> m_EntryInfos = new List<EntryInfo>();
+            private readonly List<EntryInfo> m_FilteredInfos = new List<EntryInfo>();
+
+            public bool HasFlag(int flags) { return (m_ConsoleFlags & flags) != 0; }
+
+            public void SetFlag(int flags, bool val) { SetConsoleFlag(flags, val); }
+
+            private void SetConsoleFlag(int bit, bool value)
+            {
+                if (value)
+                {
+                    m_ConsoleFlagsComing |= bit;
+                }
+                else
+                {
+                    m_ConsoleFlagsComing &= ~bit;
+                }
+            }
+
+            public int GetCount()
+            {
+                return m_FilteredInfos.Count;
+            }
+
+            public string GetEntryLinesAndFlag(int row, ref int consoleFlag)
+            {
+                if (row < 0 || row >= m_FilteredInfos.Count)
+                {
+                    return String.Empty;
+                }
+
+                consoleFlag = (int)m_FilteredInfos[row].flags;
+                return m_FilteredInfos[row].text;
+            }
+
+            public int SetSelectedEntry(int row)
+            {
+                m_SelectedInfo = null;
+                if (row < 0 || row >= m_FilteredInfos.Count)
+                {
+                    return 0;
+                }
+
+                m_SelectedInfo = m_FilteredInfos[row];
+                return m_SelectedInfo.entry.instanceID;
+            }
+
+            public bool IsEntrySelected(int row)
+            {
+                if (row < 0 || row >= m_FilteredInfos.Count)
+                {
+                    return false;
+                }
+
+                return m_FilteredInfos[row] == m_SelectedInfo;
+            }
+
+            public bool IsSelectedEntryShow()
+            {
+                if (m_SelectedInfo != null)
+                {
+                    return m_FilteredInfos.Contains(m_SelectedInfo);
+                }
+                return false;
+            }
+
+            public int GetSelectedEntryIndex()
+            {
+                if (m_SelectedInfo != null)
+                {
+                    for (int i = 0; i < m_FilteredInfos.Count; i++)
+                    {
+                        if (m_FilteredInfos[i] == m_SelectedInfo)
+                        {
+                            return i;
+                        }
+                    }
+                }
+                return -1;
+            }
+
+            public int GetEntryCount(int row)
+            {
+                return UnityEditor.LogEntries.GetEntryCount(m_FilteredInfos[row].row);
+            }
+
+            public void UpdateEntries()
+            {
+                CheckInit();
+                int flags = UnityEditor.LogEntries.consoleFlags;
+                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelLog, true);
+                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelWarning, true);
+                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelError, true);
+                int count = UnityEditor.LogEntries.GetCount();
+                if (count == m_LastEntryCount)
+                {
+                    UnityEditor.LogEntries.consoleFlags = flags;
+                    CheckRepaint(CheckSearchStringChanged());
+                    return;
+                }
+
+                if (m_LastEntryCount > count)
+                {
+                    ClearEntries();
+                }
+
+                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.ShowTimestamp, true);
+                UnityEditor.LogEntries.StartGettingEntries();
+                for (int i = m_LastEntryCount - 1; i < count; i++)
+                {
+                    LogEntry entry = new LogEntry();
+                    if (!UnityEditor.LogEntries.GetEntryInternal(i, entry))
+                    {
+                        continue;
+                    }
+
+                    int mode = 0;
+                    string text = null;
+                    UnityEditor.LogEntries.GetLinesAndModeFromEntryInternal(i, 10, ref mode, ref text);
+                    AddEntry(i, entry, text);
+                }
+                UnityEditor.LogEntries.EndGettingEntries();
+                UnityEditor.LogEntries.consoleFlags = flags;
+                m_LastEntryCount = count;
+
+                CheckSearchStringChanged();
+                CheckRepaint(true);
+            }
+
+            private void ClearEntries()
+            {
+                m_SelectedInfo = null;
+                m_EntryInfos.Clear();
+                m_FilteredInfos.Clear();
+                m_LastEntryCount = -1;
+            }
+
+            private void AddEntry(int row, LogEntry entry, string text)
+            {
+                EntryInfo entryInfo = new EntryInfo
+                {
+                    row = row,
+                    lines = text,
+                    text = GetNumberLines(text),
+                    flags = GetConsoleFlagFromMode(entry.mode),
+                    entry = entry
+                };
+                m_EntryInfos.Add(entryInfo);
+
+                // 没有将堆栈都进行搜索，以免信息太杂，只根据行数，但是变化行数时不会重新搜索
+                if (HasFlag((int)entryInfo.flags) && (string.IsNullOrEmpty(m_SearchString) || entryInfo.text.Contains(m_SearchString)))
+                {
+                    m_FilteredInfos.Add(entryInfo);
+                }
+            }
+
+            private void ResetEntriesForNumberLines()
+            {
+                foreach (var entryInfo in m_EntryInfos)
+                {
+                    entryInfo.text = GetNumberLines(entryInfo.lines);
+                }
+            }
+
+            private void CheckInit()
+            {
+                if (m_Init)
+                {
+                    return;
+                }
+
+                m_Init = true;
+                m_ConsoleFlagsComing = EditorPrefs.GetInt("ConsoleTiny_ConsoleFlags", 896);
+                m_ShowTimestamp = EditorPrefs.GetBool("ConsoleTiny_ShowTimestamp", false);
+            }
+
+            private bool CheckSearchStringChanged()
+            {
+                if (m_LastSearchStringTime > 1f && m_LastSearchStringTime < EditorApplication.timeSinceStartup)
+                {
+                    m_LastSearchStringTime = -1f;
+                    if (searchHistory[0].Length == 0)
+                    {
+                        ArrayUtility.RemoveAt(ref searchHistory, 0);
+                    }
+                    else
+                    {
+                        ArrayUtility.Remove(ref searchHistory, m_SearchString);
+                    }
+                    ArrayUtility.Insert(ref searchHistory, 0, m_SearchString);
+                    if (searchHistory.Length > 10)
+                    {
+                        ArrayUtility.RemoveAt(ref searchHistory, 10);
+                    }
+                }
+
+                if (m_SearchString == m_SearchStringComing && m_ConsoleFlags == m_ConsoleFlagsComing)
+                {
+                    return false;
+                }
+
+                bool hasSearchString = !string.IsNullOrEmpty(m_SearchStringComing);
+                bool startsWithValue = hasSearchString && !string.IsNullOrEmpty(m_SearchString)
+                                       && m_SearchStringComing.StartsWith(m_SearchString, StringComparison.Ordinal);
+                bool flagsChangedValue = m_ConsoleFlags != m_ConsoleFlagsComing;
+                m_ConsoleFlags = m_ConsoleFlagsComing;
+
+                if (flagsChangedValue || !startsWithValue)
+                {
+                    m_FilteredInfos.Clear();
+
+                    foreach (var entryInfo in m_EntryInfos)
+                    {
+                        if (HasFlag((int)entryInfo.flags) && (!hasSearchString || entryInfo.text.Contains(m_SearchStringComing)))
+                        {
+                            m_FilteredInfos.Add(entryInfo);
+                        }
+                    }
+                }
+                else
+                {
+                    for (int i = m_FilteredInfos.Count - 1; i >= 0; i--)
+                    {
+                        if (!m_FilteredInfos[i].text.Contains(m_SearchStringComing))
+                        {
+                            m_FilteredInfos.RemoveAt(i);
+                        }
+                    }
+                }
+
+                m_SearchString = m_SearchStringComing;
+                if (hasSearchString)
+                {
+                    m_LastSearchStringTime = EditorApplication.timeSinceStartup + 3f;
+                }
+
+                if (flagsChangedValue)
+                {
+                    EditorPrefs.SetInt("ConsoleTiny_ConsoleFlags", m_ConsoleFlags);
+                }
+
+                searchFrame = IsSelectedEntryShow();
+                return true;
+            }
+
+            private void CheckRepaint(bool repaint)
+            {
+
+            }
+
+            private bool HasMode(int mode, Mode modeToCheck) { return (mode & (int)modeToCheck) != 0; }
+
+            private ConsoleFlags GetConsoleFlagFromMode(int mode)
+            {
+                // Errors
+                if (HasMode(mode, Mode.Fatal | Mode.Assert |
+                                  Mode.Error | Mode.ScriptingError |
+                                  Mode.AssetImportError | Mode.ScriptCompileError |
+                                  Mode.GraphCompileError | Mode.ScriptingAssertion))
+                {
+                    return ConsoleFlags.LogLevelError;
+                }
+                // Warnings
+                if (HasMode(mode, Mode.ScriptCompileWarning | Mode.ScriptingWarning | Mode.AssetImportWarning))
+                {
+                    return ConsoleFlags.LogLevelWarning;
+                }
+                // Logs
+                return ConsoleFlags.LogLevelLog;
+            }
+
+            private string GetNumberLines(string s)
+            {
+                int num = numberOfLines;
+                int i = -1;
+                while (num-- > 0)
+                {
+                    int j = s.IndexOf('\n', i + 1);
+                    if (j != -1 && num >= 0)
+                    {
+                        i = j;
+                    }
+                }
+
+                if (i != -1)
+                {
+                    int startIndex = 0;
+                    if (!showTimestamp)
+                    {
+                        startIndex = 11;
+                    }
+                    return s.Substring(startIndex, i - startIndex);
+                }
+                return s;
+            }
+
+            public void ExportLog()
+            {
+                string filePath = EditorUtility.SaveFilePanel("Export Log", "",
+                    "Console Log " + string.Format("{0:HHmm}", DateTime.Now) + ".txt", "txt");
+                if (string.IsNullOrEmpty(filePath))
+                {
+                    return;
+                }
+
+                StringBuilder sb = new StringBuilder();
+                foreach (var entryInfo in m_FilteredInfos)
+                {
+                    sb.AppendLine(entryInfo.entry.condition);
+                }
+                File.WriteAllText(filePath, sb.ToString());
+            }
+
+            #region Stacktrace
+
+            internal class Constants
+            {
+                public static string colorNamespace, colorNamespaceAlpha;
+                public static string colorClass, colorClassAlpha;
+                public static string colorMethod, colorMethodAlpha;
+                public static string colorParameters, colorParametersAlpha;
+                public static string colorPath, colorPathAlpha;
+                public static string colorFilename, colorFilenameAlpha;
+            }
+
+            private class StacktraceLineInfo
+            {
+                public string plain;
+                public string text;
+                public string filePath;
+                public int lineNum;
+            }
+
+            public bool StacktraceListView_IsExist()
+            {
+                if (m_SelectedInfo == null || m_SelectedInfo.stacktraceLineInfos == null)
+                {
+                    return false;
+                }
+
+                return true;
+            }
+
+            public int StacktraceListView_GetCount()
+            {
+                if (StacktraceListView_IsExist() && IsSelectedEntryShow())
+                {
+                    return m_SelectedInfo.stacktraceLineInfos.Count;
+                }
+
+                return 0;
+            }
+
+            public string StacktraceListView_GetLine(int row)
+            {
+                if (StacktraceListView_IsExist())
+                {
+                    return m_SelectedInfo.stacktraceLineInfos[row].text;
+                }
+
+                return String.Empty;
+            }
+
+            public float StacktraceListView_GetMaxWidth(GUIContent tempContent, GUIStyle tempStyle)
+            {
+                if (m_SelectedInfo == null || !IsSelectedEntryShow())
+                {
+                    return 1f;
+                }
+
+                if (!StacktraceListView_IsExist())
+                {
+                    StacktraceListView_Parse(m_SelectedInfo);
+                }
+
+                var maxLine = -1;
+                var maxLineLen = -1;
+                for (int i = 0; i < m_SelectedInfo.stacktraceLineInfos.Count; i++)
+                {
+                    if (maxLineLen < m_SelectedInfo.stacktraceLineInfos[i].plain.Length)
+                    {
+                        maxLineLen = m_SelectedInfo.stacktraceLineInfos[i].plain.Length;
+                        maxLine = i;
+                    }
+                }
+
+                float maxWidth = 1f;
+                if (maxLine != -1)
+                {
+                    tempContent.text = m_SelectedInfo.stacktraceLineInfos[maxLine].plain;
+                    maxWidth = tempStyle.CalcSize(tempContent).x;
+                }
+
+                return maxWidth;
+            }
+
+            private void StacktraceListView_Parse(EntryInfo entryInfo)
+            {
+                var lines = entryInfo.entry.condition.Split(new char[] { '\n' }, StringSplitOptions.None);
+                entryInfo.stacktraceLineInfos = new List<StacktraceLineInfo>(lines.Length);
+
+                string rootDirectory = System.IO.Path.Combine(Application.dataPath, "..");
+                Uri uriRoot = new Uri(rootDirectory);
+                string textBeforeFilePath = ") (at ";
+                string textUnityEngineDebug = "UnityEngine.Debug";
+                string fileInBuildSlave = "C:/buildslave/unity/";
+                string luaCFunction = "[C]";
+                string luaMethodBefore = ": in function ";
+                string luaFileExt = ".lua";
+                string luaAssetPath = "Assets/Lua/";
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i];
+                    if (i == lines.Length - 1 && string.IsNullOrEmpty(line))
+                    {
+                        continue;
+                    }
+                    if (line.StartsWith(textUnityEngineDebug))
+                    {
+                        continue;
+                    }
+
+                    StacktraceLineInfo info = new StacktraceLineInfo();
+                    info.plain = line;
+                    info.text = info.plain;
+                    entryInfo.stacktraceLineInfos.Add(info);
+
+                    if (i == 0)
+                    {
+                        continue;
+                    }
+
+                    if (!StacktraceListView_Parse_CSharp(line, info, textBeforeFilePath, fileInBuildSlave, uriRoot))
+                    {
+                        StacktraceListView_Parse_Lua(line, info, luaCFunction, luaMethodBefore, luaFileExt, luaAssetPath);
+                    }
+                }
+            }
+
+            private bool StacktraceListView_Parse_CSharp(string line, StacktraceLineInfo info,
+                string textBeforeFilePath, string fileInBuildSlave, Uri uriRoot)
+            {
+                int methodLastIndex = line.IndexOf('(');
+                if (methodLastIndex <= 0)
+                {
+                    return false;
+                }
+                int argsLastIndex = line.IndexOf(')', methodLastIndex);
+                if (argsLastIndex <= 0)
+                {
+                    return false;
+                }
+                int methodFirstIndex = line.LastIndexOf(':', methodLastIndex);
+                if (methodFirstIndex <= 0)
+                {
+                    methodFirstIndex = line.LastIndexOf('.', methodLastIndex);
+                    if (methodFirstIndex <= 0)
+                    {
+                        return false;
+                    }
+                }
+                string methodString = line.Substring(methodFirstIndex + 1, methodLastIndex - methodFirstIndex - 1);
+
+                string classString;
+                string namespaceString = String.Empty;
+                int classFirstIndex = line.LastIndexOf('.', methodFirstIndex - 1);
+                if (classFirstIndex <= 0)
+                {
+                    classString = line.Substring(0, methodFirstIndex + 1);
+                }
+                else
+                {
+                    classString = line.Substring(classFirstIndex + 1, methodFirstIndex - classFirstIndex);
+                    namespaceString = line.Substring(0, classFirstIndex + 1);
+                }
+
+                string argsString = line.Substring(methodLastIndex, argsLastIndex - methodLastIndex + 1);
+                string fileString = String.Empty;
+                string fileNameString = String.Empty;
+                string fileLineString = String.Empty;
+                bool alphaColor = true;
+
+                int filePathIndex = line.IndexOf(textBeforeFilePath, argsLastIndex, StringComparison.Ordinal);
+                if (filePathIndex > 0)
+                {
+                    filePathIndex += textBeforeFilePath.Length;
+                    if (line[filePathIndex] != '<') // sometimes no url is given, just an id between <>, we can't do an hyperlink
+                    {
+                        string filePathPart = line.Substring(filePathIndex);
+                        int lineIndex = filePathPart.LastIndexOf(":", StringComparison.Ordinal); // LastIndex because the url can contain ':' ex:"C:"
+                        if (lineIndex > 0)
+                        {
+                            int endLineIndex = filePathPart.LastIndexOf(")", StringComparison.Ordinal); // LastIndex because files or folder in the url can contain ')'
+                            if (endLineIndex > 0)
+                            {
+                                string lineString =
+                                    filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
+                                string filePath = filePathPart.Substring(0, lineIndex);
+
+                                if (!filePath.StartsWith(fileInBuildSlave, StringComparison.Ordinal))
+                                {
+                                    alphaColor = false;
+                                }
+
+                                info.filePath = filePath;
+                                info.lineNum = int.Parse(lineString);
+
+                                if (filePath.Length > 2 && filePath[1] == ':')
+                                {
+                                    Uri uriFile = new Uri(filePath);
+                                    Uri relativeUri = uriRoot.MakeRelativeUri(uriFile);
+                                    string relativePath = relativeUri.ToString();
+                                    if (!string.IsNullOrEmpty(relativePath))
+                                    {
+                                        info.plain = info.plain.Replace(filePath, relativePath);
+                                        filePath = relativePath;
+                                    }
+                                }
+
+                                fileNameString = System.IO.Path.GetFileName(filePath);
+                                fileString = textBeforeFilePath.Substring(1) + filePath.Substring(0, filePath.Length - fileNameString.Length);
+                                fileLineString = filePathPart.Substring(lineIndex, endLineIndex - lineIndex + 1);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        fileString = line.Substring(argsLastIndex + 1);
+                    }
+                }
+
+                if (alphaColor)
+                {
+                    info.text = $"<color=#{Constants.colorNamespaceAlpha}>{namespaceString}</color>" + $"<color=#{Constants.colorClassAlpha}>{classString}</color>" +
+                                $"<color=#{Constants.colorMethodAlpha}>{methodString}</color>" + $"<color=#{Constants.colorParametersAlpha}>{argsString}</color>" +
+                                $"<color=#{Constants.colorPathAlpha}>{fileString}</color>" + $"<color=#{Constants.colorFilenameAlpha}>{fileNameString}</color>" +
+                                $"<color=#{Constants.colorPathAlpha}>{fileLineString}</color>";
+                }
+                else
+                {
+                    info.text = $"<color=#{Constants.colorNamespace}>{namespaceString}</color>" + $"<color=#{Constants.colorClass}>{classString}</color>" +
+                                $"<color=#{Constants.colorMethod}>{methodString}</color>" + $"<color=#{Constants.colorParameters}>{argsString}</color>" +
+                                $"<color=#{Constants.colorPath}>{fileString}</color>" + $"<color=#{Constants.colorFilename}>{fileNameString}</color>" +
+                                $"<color=#{Constants.colorPath}>{fileLineString}</color>";
+                }
+
+                return true;
+            }
+
+            private bool StacktraceListView_Parse_Lua(string line, StacktraceLineInfo info,
+                string luaCFunction, string luaMethodBefore, string luaFileExt, string luaAssetPath)
+            {
+                if (string.IsNullOrEmpty(line) || line[0] != '	')
+                {
+                    return false;
+                }
+
+                string preMethodString = line;
+                string methodString = String.Empty;
+                int methodFirstIndex = line.IndexOf(luaMethodBefore, StringComparison.Ordinal);
+                if (methodFirstIndex > 0)
+                {
+                    methodString = line.Substring(methodFirstIndex + luaMethodBefore.Length);
+                    preMethodString = preMethodString.Remove(methodFirstIndex + luaMethodBefore.Length);
+                }
+
+                bool cFunction = line.IndexOf(luaCFunction, 1, StringComparison.Ordinal) == 1;
+                if (!cFunction)
+                {
+                    int lineIndex = line.IndexOf(':');
+                    if (lineIndex > 0)
+                    {
+                        int endLineIndex = line.IndexOf(':', lineIndex + 1);
+                        if (endLineIndex > 0)
+                        {
+                            string lineString =
+                                line.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
+                            string filePath = line.Substring(1, lineIndex - 1);
+                            if (!filePath.EndsWith(luaFileExt, StringComparison.Ordinal))
+                            {
+                                filePath += luaFileExt;
+                            }
+
+                            if (!int.TryParse(lineString, out info.lineNum))
+                            {
+                                return false;
+                            }
+                            info.filePath = luaAssetPath + filePath;
+
+                            string namespaceString = String.Empty;
+                            int classFirstIndex = filePath.LastIndexOf('/');
+                            if (classFirstIndex > 0)
+                            {
+                                namespaceString = filePath.Substring(0, classFirstIndex + 1);
+                            }
+
+                            string classString = filePath.Substring(classFirstIndex + 1,
+                                filePath.Length - namespaceString.Length - luaFileExt.Length);
+
+
+                            info.text = $"	<color=#{Constants.colorNamespace}>{namespaceString}</color>" +
+                                        $"<color=#{Constants.colorClass}>{classString}</color>" + $"<color=#{Constants.colorPath}>:{lineString}</color>" +
+                                        $"<color=#{Constants.colorPath}>{luaMethodBefore}</color>" +
+                                        $"<color=#{Constants.colorMethod}>{methodString}</color>";
+                        }
+                    }
+                }
+                else
+                {
+                    info.text = $"<color=#{Constants.colorPathAlpha}>{preMethodString}</color>" + $"<color=#{Constants.colorMethodAlpha}>{methodString}</color>";
+                }
+
+                return true;
+            }
+
+            public bool StacktraceListView_CanOpen(int stacktraceLineInfoIndex)
+            {
+                if (!StacktraceListView_IsExist())
+                {
+                    return false;
+                }
+
+                if (stacktraceLineInfoIndex < m_SelectedInfo.stacktraceLineInfos.Count)
+                {
+                    return !string.IsNullOrEmpty(m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].filePath);
+                }
+                return false;
+            }
+
+            public void StacktraceListView_RowGotDoubleClicked()
+            {
+                if (!StacktraceListView_IsExist())
+                {
+                    return;
+                }
+
+                for (var i = 0; i < m_SelectedInfo.stacktraceLineInfos.Count; i++)
+                {
+                    var stacktraceLineInfo = m_SelectedInfo.stacktraceLineInfos[i];
+                    if (!string.IsNullOrEmpty(stacktraceLineInfo.filePath))
+                    {
+                        StacktraceListView_Open(i);
+                        break;
+                    }
+                }
+            }
+
+            public void StacktraceListView_Open(object userData)
+            {
+                if (!StacktraceListView_IsExist())
+                {
+                    return;
+                }
+
+                var stacktraceLineInfoIndex = (int)userData;
+                if (stacktraceLineInfoIndex < m_SelectedInfo.stacktraceLineInfos.Count)
+                {
+                    var filePath = m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].filePath;
+                    var lineNum = m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].lineNum;
+                    ScriptAssetOpener.OpenAsset(filePath, lineNum);
+                }
+            }
+
+            public void StacktraceListView_Copy(object userData)
+            {
+                if (!StacktraceListView_IsExist())
+                {
+                    return;
+                }
+
+                var stacktraceLineInfoIndex = (int)userData;
+                if (stacktraceLineInfoIndex < m_SelectedInfo.stacktraceLineInfos.Count)
+                {
+                    EditorGUIUtility.systemCopyBuffer = m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].plain;
+                }
+            }
+
+            public void StacktraceListView_CopyAll()
+            {
+                if (!StacktraceListView_IsExist() || !IsSelectedEntryShow())
+                {
+                    return;
+                }
+
+                EditorGUIUtility.systemCopyBuffer = m_SelectedInfo.entry.condition;
+            }
+
+            #endregion
         }
     }
 }
