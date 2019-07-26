@@ -394,6 +394,7 @@ namespace ConsoleTiny
         void SetActiveEntry(int selectedIndex)
         {
             m_ListViewMessage.row = -1;
+            m_ListViewMessage.scrollPos.y = 0;
             if (selectedIndex != -1)
             {
                 var instanceID = LogEntries.wrapped.SetSelectedEntry(selectedIndex);
@@ -686,7 +687,7 @@ namespace ConsoleTiny
         }
 
         #region Stacktrace
-        
+
         private void StacktraceListView(Event e, GUIContent tempContent)
         {
             float maxWidth = LogEntries.wrapped.StacktraceListView_GetMaxWidth(tempContent, Constants.MessageStyle);
