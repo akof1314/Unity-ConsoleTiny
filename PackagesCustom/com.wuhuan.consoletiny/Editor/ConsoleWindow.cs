@@ -53,6 +53,7 @@ namespace ConsoleTiny
             public static readonly string CollapseLabel = L10n.Tr("Collapse");
             public static readonly string StopForAssertLabel = L10n.Tr("Stop for Assert");
             public static readonly string StopForErrorLabel = L10n.Tr("Stop for Error");
+            public static readonly string ClearOnBuildLabel = L10n.Tr("Clear on Build");
 
             public static int LogStyleLineCount
             {
@@ -218,6 +219,7 @@ namespace ConsoleTiny
             LogLevelWarning = 1 << 8,
             LogLevelError = 1 << 9,
             ShowTimestamp = 1 << 10,
+            ClearOnBuild = 1 << 11,
         };
 
         static ConsoleWindow ms_ConsoleWindow = null;
@@ -483,6 +485,9 @@ namespace ConsoleTiny
             }
 
             SetFlag(ConsoleFlags.ClearOnPlay, GUILayout.Toggle(HasFlag(ConsoleFlags.ClearOnPlay), Constants.ClearOnPlayLabel, Constants.MiniButton));
+#if UNITY_2019_1_OR_NEWER
+            SetFlag(ConsoleFlags.ClearOnBuild, GUILayout.Toggle(HasFlag(ConsoleFlags.ClearOnBuild), Constants.ClearOnBuildLabel, Constants.MiniButton));
+#endif
             SetFlag(ConsoleFlags.ErrorPause, GUILayout.Toggle(HasFlag(ConsoleFlags.ErrorPause), Constants.ErrorPauseLabel, Constants.MiniButton));
 
             ConnectionGUILayout.AttachToPlayerDropdown(m_ConsoleAttachToPlayerState, EditorStyles.toolbarDropDown);
@@ -801,11 +806,13 @@ namespace ConsoleTiny
 
             menu.AddItem(EditorGUIUtility.TrTextContent("Show Timestamp"), LogEntries.wrapped.showTimestamp, SetTimestamp);
 
+#if UNITY_2017_3_OR_NEWER
             for (int i = 1; i <= 10; ++i)
             {
                 var lineString = i == 1 ? "Line" : "Lines";
                 menu.AddItem(new GUIContent(string.Format("Log Entry/{0} {1}", i, lineString)), i == Constants.LogStyleLineCount, SetLogLineCount, i);
             }
+#endif
 
             AddStackTraceLoggingMenu(menu);
         }

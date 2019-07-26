@@ -28,6 +28,7 @@ namespace ConsoleTiny
                 public int row;
                 public string lines;
                 public string text;
+                public string lower;
                 public ConsoleFlags flags;
                 public LogEntry entry;
                 public List<StacktraceLineInfo> stacktraceLineInfos;
@@ -253,10 +254,12 @@ namespace ConsoleTiny
                     flags = GetConsoleFlagFromMode(entry.mode),
                     entry = entry
                 };
+                entryInfo.lower = entryInfo.text.ToLower();
                 m_EntryInfos.Add(entryInfo);
 
                 // 没有将堆栈都进行搜索，以免信息太杂，只根据行数，但是变化行数时不会重新搜索
-                if (HasFlag((int)entryInfo.flags) && (string.IsNullOrEmpty(m_SearchString) || entryInfo.text.Contains(m_SearchString)))
+                if (HasFlag((int)entryInfo.flags) && 
+                    (string.IsNullOrEmpty(m_SearchString) || entryInfo.lower.Contains(m_SearchString.ToLower())))
                 {
                     m_FilteredInfos.Add(entryInfo);
                 }
@@ -267,6 +270,7 @@ namespace ConsoleTiny
                 foreach (var entryInfo in m_EntryInfos)
                 {
                     entryInfo.text = GetNumberLines(entryInfo.lines);
+                    entryInfo.lower = entryInfo.text.ToLower();
                 }
             }
 
@@ -312,6 +316,11 @@ namespace ConsoleTiny
                                        && m_SearchStringComing.StartsWith(m_SearchString, StringComparison.Ordinal);
                 bool flagsChangedValue = m_ConsoleFlags != m_ConsoleFlagsComing;
                 m_ConsoleFlags = m_ConsoleFlagsComing;
+                string searchStringValue = null;
+                if (hasSearchString)
+                {
+                    searchStringValue = m_SearchStringComing.ToLower();
+                }
 
                 if (flagsChangedValue || !startsWithValue)
                 {
@@ -319,7 +328,7 @@ namespace ConsoleTiny
 
                     foreach (var entryInfo in m_EntryInfos)
                     {
-                        if (HasFlag((int)entryInfo.flags) && (!hasSearchString || entryInfo.text.Contains(m_SearchStringComing)))
+                        if (HasFlag((int)entryInfo.flags) && (!hasSearchString || entryInfo.lower.Contains(searchStringValue)))
                         {
                             m_FilteredInfos.Add(entryInfo);
                         }
@@ -329,7 +338,7 @@ namespace ConsoleTiny
                 {
                     for (int i = m_FilteredInfos.Count - 1; i >= 0; i--)
                     {
-                        if (!m_FilteredInfos[i].text.Contains(m_SearchStringComing))
+                        if (!m_FilteredInfos[i].lower.Contains(searchStringValue))
                         {
                             m_FilteredInfos.RemoveAt(i);
                         }
@@ -511,7 +520,11 @@ namespace ConsoleTiny
                 Uri uriRoot = new Uri(rootDirectory);
                 string textBeforeFilePath = ") (at ";
                 string textUnityEngineDebug = "UnityEngine.Debug";
+#if UNITY_2019_1_OR_NEWER
+                string fileInBuildSlave = "D:/unity/";
+#else
                 string fileInBuildSlave = "C:/buildslave/unity/";
+#endif
                 string luaCFunction = "[C]";
                 string luaMethodBefore = ": in function ";
                 string luaFileExt = ".lua";
