@@ -176,6 +176,7 @@ namespace ConsoleTiny
         private int m_ActiveInstanceID = 0;
         bool m_DevBuild;
         private string[] m_SearchHistory = new[] { "" };
+        private double m_NextRepaint = double.MaxValue;
 
         SplitterState spl = new SplitterState(new float[] { 70, 30 }, new int[] { 32, 32 }, null);
 
@@ -277,18 +278,12 @@ namespace ConsoleTiny
             Constants.Init();
         }
 
-        //[RequiredByNativeCode]
-        public static void LogChanged()
+        public void DoLogChanged(string logString, string stackTrace, LogType type)
         {
             if (ms_ConsoleWindow == null)
                 return;
 
-            ms_ConsoleWindow.DoLogChanged();
-        }
-
-        public void DoLogChanged()
-        {
-            ms_ConsoleWindow.Repaint();
+            ms_ConsoleWindow.m_NextRepaint = EditorApplication.timeSinceStartup + SearchableEditorWindow.k_SearchTimerDelaySecs;
         }
 
         public ConsoleWindow()
@@ -319,6 +314,7 @@ namespace ConsoleTiny
             LogEntries.wrapped.searchHistory = m_SearchHistory;
 
             Constants.LogStyleLineCount = EditorPrefs.GetInt("ConsoleWindowLogLineCount", 2);
+            Application.logMessageReceived += DoLogChanged;
         }
 
         void MakeSureConsoleAlwaysOnlyOne()
@@ -337,6 +333,8 @@ namespace ConsoleTiny
 
         void OnDisable()
         {
+            Application.logMessageReceived -= DoLogChanged;
+
 #if UNITY_2018_3_OR_NEWER
             m_ConsoleAttachToPlayerState?.Dispose();
             m_ConsoleAttachToPlayerState = null;
@@ -344,6 +342,15 @@ namespace ConsoleTiny
             m_SearchHistory = LogEntries.wrapped.searchHistory;
             if (ms_ConsoleWindow == this)
                 ms_ConsoleWindow = null;
+        }
+
+        void OnInspectorUpdate()
+        {
+            if (EditorApplication.timeSinceStartup > m_NextRepaint)
+            {
+                m_NextRepaint = double.MaxValue;
+                Repaint();
+            }
         }
 
         private int RowHeight

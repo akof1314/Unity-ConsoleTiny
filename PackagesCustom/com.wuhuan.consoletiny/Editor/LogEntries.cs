@@ -340,18 +340,21 @@ namespace ConsoleTiny
                 if (m_LastSearchStringTime > 1f && m_LastSearchStringTime < EditorApplication.timeSinceStartup)
                 {
                     m_LastSearchStringTime = -1f;
-                    if (searchHistory[0].Length == 0)
+                    if (!string.IsNullOrEmpty(m_SearchString))
                     {
-                        ArrayUtility.RemoveAt(ref searchHistory, 0);
-                    }
-                    else
-                    {
-                        ArrayUtility.Remove(ref searchHistory, m_SearchString);
-                    }
-                    ArrayUtility.Insert(ref searchHistory, 0, m_SearchString);
-                    if (searchHistory.Length > 10)
-                    {
-                        ArrayUtility.RemoveAt(ref searchHistory, 10);
+                        if (searchHistory[0].Length == 0)
+                        {
+                            ArrayUtility.RemoveAt(ref searchHistory, 0);
+                        }
+                        else
+                        {
+                            ArrayUtility.Remove(ref searchHistory, m_SearchString);
+                        }
+                        ArrayUtility.Insert(ref searchHistory, 0, m_SearchString);
+                        if (searchHistory.Length > 10)
+                        {
+                            ArrayUtility.RemoveAt(ref searchHistory, 10);
+                        }
                     }
                 }
 
