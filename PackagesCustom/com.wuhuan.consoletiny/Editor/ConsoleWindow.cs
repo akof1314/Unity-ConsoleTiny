@@ -10,6 +10,11 @@ using ConnectionGUILayout = UnityEditor.Experimental.Networking.PlayerConnection
 using EditorGUI = UnityEditor.EditorGUI;
 using EditorGUILayout = UnityEditor.EditorGUILayout;
 using EditorGUIUtility = UnityEditor.EditorGUIUtility;
+#if UNITY_2017_1_OR_NEWER
+using CoreLog = UnityEditor;
+#else
+using CoreLog = UnityEditorInternal;
+#endif
 
 namespace ConsoleTiny
 {
@@ -49,13 +54,13 @@ namespace ConsoleTiny
             public static GUIStyle IconLogSmallStyle;
             public static GUIStyle IconWarningSmallStyle;
             public static GUIStyle IconErrorSmallStyle;
-            public static readonly string ClearLabel = L10n.Tr("Clear");
-            public static readonly string ClearOnPlayLabel = L10n.Tr("Clear on Play");
-            public static readonly string ErrorPauseLabel = L10n.Tr("Error Pause");
-            public static readonly string CollapseLabel = L10n.Tr("Collapse");
-            public static readonly string StopForAssertLabel = L10n.Tr("Stop for Assert");
-            public static readonly string StopForErrorLabel = L10n.Tr("Stop for Error");
-            public static readonly string ClearOnBuildLabel = L10n.Tr("Clear on Build");
+            public static readonly string ClearLabel = ("Clear");
+            public static readonly string ClearOnPlayLabel = ("Clear on Play");
+            public static readonly string ErrorPauseLabel = ("Error Pause");
+            public static readonly string CollapseLabel = ("Collapse");
+            public static readonly string StopForAssertLabel = ("Stop for Assert");
+            public static readonly string StopForErrorLabel = ("Stop for Error");
+            public static readonly string ClearOnBuildLabel = ("Clear on Build");
 
             public static int LogStyleLineCount
             {
@@ -84,17 +89,9 @@ namespace ConsoleTiny
                 MiniButton = "ToolbarButton";
                 Toolbar = "Toolbar";
                 LogStyle = "CN EntryInfo";
-                LogSmallStyle = "CN EntryInfoSmall";
                 WarningStyle = "CN EntryWarn";
-                WarningSmallStyle = "CN EntryWarnSmall";
                 ErrorStyle = "CN EntryError";
-                ErrorSmallStyle = "CN EntryErrorSmall";
-                IconLogStyle = "CN EntryInfoIcon";
-                IconLogSmallStyle = "CN EntryInfoIconSmall";
-                IconWarningStyle = "CN EntryWarnIcon";
-                IconWarningSmallStyle = "CN EntryWarnIconSmall";
-                IconErrorStyle = "CN EntryErrorIcon";
-                IconErrorSmallStyle = "CN EntryErrorIconSmall";
+                
                 EvenBackground = "CN EntryBackEven";
                 OddBackground = "CN EntryBackodd";
                 MessageStyle = "CN Message";
@@ -123,6 +120,34 @@ namespace ConsoleTiny
                 LogEntries.EntryWrapped.Constants.colorPathAlpha = isProSkin ? "375860" : "8E989D";
                 LogEntries.EntryWrapped.Constants.colorFilenameAlpha = isProSkin ? "4A6E8A" : "6285A1";
 
+#if !UNITY_2017_1_OR_NEWER
+                IconLogStyle = "CN EntryInfo";
+                IconWarningStyle = "CN EntryWarn";
+                IconErrorStyle = "CN EntryError";
+                LogSmallStyle = new GUIStyle("CN EntryInfo");
+                WarningSmallStyle = new GUIStyle("CN EntryWarn");
+                ErrorSmallStyle = new GUIStyle("CN EntryError");
+                IconLogSmallStyle = new GUIStyle("CN EntryInfo");
+                IconWarningSmallStyle = new GUIStyle("CN EntryWarn");
+                IconErrorSmallStyle = new GUIStyle("CN EntryError");
+                LogSmallStyle.normal.background = null; LogSmallStyle.onNormal.background = null;
+                WarningSmallStyle.normal.background = null; WarningSmallStyle.onNormal.background = null;
+                ErrorSmallStyle.normal.background = null; ErrorSmallStyle.onNormal.background = null;
+                IconLogSmallStyle.normal.background = null; IconLogSmallStyle.onNormal.background = null;
+                IconWarningSmallStyle.normal.background = null; IconWarningSmallStyle.onNormal.background = null;
+                IconErrorSmallStyle.normal.background = null; IconErrorSmallStyle.onNormal.background = null;
+#else
+                IconLogStyle = "CN EntryInfoIcon";
+                IconWarningStyle = "CN EntryWarnIcon";
+                IconErrorStyle = "CN EntryErrorIcon";
+                LogSmallStyle = "CN EntryInfoSmall";
+                WarningSmallStyle = "CN EntryWarnSmall";
+                ErrorSmallStyle = "CN EntryErrorSmall";
+                IconLogSmallStyle = "CN EntryInfoIconSmall";
+                IconWarningSmallStyle = "CN EntryWarnIconSmall";
+                IconErrorSmallStyle = "CN EntryErrorIconSmall";
+#endif
+
                 // If the console window isn't open OnEnable() won't trigger so it will end up with 0 lines,
                 // so we always make sure we read it up when we initialize here.
                 LogStyleLineCount = EditorPrefs.GetInt("ConsoleWindowLogLineCount", 2);
@@ -130,11 +155,13 @@ namespace ConsoleTiny
 
             private static void UpdateLogStyleFixedHeights()
             {
+#if UNITY_2017_1_OR_NEWER
                 // Whenever we change the line height count or the styles are set we need to update the fixed height
                 // of the following GuiStyles so the entries do not get cropped incorrectly.
                 ErrorStyle.fixedHeight = (LogStyleLineCount * ErrorStyle.lineHeight) + ErrorStyle.border.top;
                 WarningStyle.fixedHeight = (LogStyleLineCount * WarningStyle.lineHeight) + WarningStyle.border.top;
                 LogStyle.fixedHeight = (LogStyleLineCount * LogStyle.lineHeight) + LogStyle.border.top;
+#endif
             }
         }
 
@@ -226,7 +253,7 @@ namespace ConsoleTiny
         };
 
         static ConsoleWindow ms_ConsoleWindow = null;
-        
+
         static internal void LoadIcons()
         {
             if (ms_LoadedIcons)
@@ -281,7 +308,7 @@ namespace ConsoleTiny
 
             MakeSureConsoleAlwaysOnlyOne();
 
-            titleContent = EditorGUIUtility.TrTextContentWithIcon("Console", "UnityEditor.ConsoleWindow");
+            titleContent = EditorGUIUtility.TextContentWithIcon("Console", "UnityEditor.ConsoleWindow");
             titleContent = new GUIContent(titleContent) { text = "ConsoleT" };
             ms_ConsoleWindow = this;
 #if UNITY_2018_1_OR_NEWER
@@ -327,8 +354,20 @@ namespace ConsoleTiny
             }
         }
 
-        private static bool HasFlag(ConsoleFlags flags) { return (UnityEditor.LogEntries.consoleFlags & (int)flags) != 0; }
-        private static void SetFlag(ConsoleFlags flags, bool val) { UnityEditor.LogEntries.SetConsoleFlag((int)flags, val); }
+        private static bool HasFlag(ConsoleFlags flags) { return (CoreLog.LogEntries.consoleFlags & (int)flags) != 0; }
+        private static void SetFlag(ConsoleFlags flags, bool val) { CoreLog.LogEntries.SetConsoleFlag((int)flags, val); }
+
+        private static Texture2D GetIconForErrorMode(ConsoleFlags flags, bool large)
+        {
+            // Errors
+            if (flags == ConsoleFlags.LogLevelError)
+                return large ? iconError : iconErrorSmall;
+            // Warnings
+            if (flags == ConsoleFlags.LogLevelWarning)
+                return large ? iconWarn : iconWarnSmall;
+            // Logs
+            return large ? iconInfo : iconInfoSmall;
+        }
 
         private static GUIStyle GetStyleForErrorMode(ConsoleFlags flags, bool isIcon, bool isSmall)
         {
@@ -471,7 +510,7 @@ namespace ConsoleTiny
             {
                 // unselect if collapsed flag changed
                 m_ListView.row = -1;
-                
+
                 // scroll to bottom
                 m_ListView.scrollPos.y = LogEntries.wrapped.GetCount() * RowHeight;
             }
@@ -544,7 +583,7 @@ namespace ConsoleTiny
                         int mode = 0;
                         int entryCount = 0;
                         string text = LogEntries.wrapped.GetEntryLinesAndFlagAndCount(el.row, ref mode, ref entryCount);
-                        ConsoleFlags flag = (ConsoleFlags) mode;
+                        ConsoleFlags flag = (ConsoleFlags)mode;
                         bool isSelected = LogEntries.wrapped.IsEntrySelected(el.row);
 
                         // Draw the background
@@ -552,8 +591,22 @@ namespace ConsoleTiny
                         s.Draw(el.position, false, false, isSelected, false);
 
                         // Draw the icon
-                        GUIStyle iconStyle = GetStyleForErrorMode(flag, true, Constants.LogStyleLineCount == 1);
-                        iconStyle.Draw(el.position, false, false, isSelected, false);
+#if !UNITY_2017_3_OR_NEWER
+                        if (Constants.LogStyleLineCount == 1)
+                        {
+                            Rect rt = el.position;
+                            rt.x += 6f;
+                            rt.y += 2f;
+                            rt.width = 16f;
+                            rt.height = 16f;
+                            GUI.DrawTexture(rt, GetIconForErrorMode(flag, false));
+                        }
+                        else
+#endif
+                        {
+                            GUIStyle iconStyle = GetStyleForErrorMode(flag, true, Constants.LogStyleLineCount == 1);
+                            iconStyle.Draw(el.position, false, false, isSelected, false);
+                        }
 
                         // Draw the text
                         tempContent.text = text;
@@ -690,7 +743,7 @@ namespace ConsoleTiny
             LogEntries.wrapped.searchString = options[selected];
         }
 
-#region Stacktrace
+        #region Stacktrace
 
         private void StacktraceListView(Event e, GUIContent tempContent)
         {
@@ -776,7 +829,7 @@ namespace ConsoleTiny
             }
         }
 
-#endregion
+        #endregion
 
         public struct StackTraceLogTypeData
         {
@@ -799,9 +852,9 @@ namespace ConsoleTiny
         public void AddItemsToMenu(GenericMenu menu)
         {
             if (Application.platform == RuntimePlatform.OSXEditor)
-                menu.AddItem(EditorGUIUtility.TrTextContent("Open Player Log"), false, UnityEditorInternal.InternalEditorUtility.OpenPlayerConsole);
-            menu.AddItem(EditorGUIUtility.TrTextContent("Open Editor Log"), false, UnityEditorInternal.InternalEditorUtility.OpenEditorConsole);
-            menu.AddItem(EditorGUIUtility.TrTextContent("Export Console Log"), false, LogEntries.wrapped.ExportLog);
+                menu.AddItem(EditorGUIUtility.TextContent("Open Player Log"), false, UnityEditorInternal.InternalEditorUtility.OpenPlayerConsole);
+            menu.AddItem(EditorGUIUtility.TextContent("Open Editor Log"), false, UnityEditorInternal.InternalEditorUtility.OpenEditorConsole);
+            menu.AddItem(EditorGUIUtility.TextContent("Export Console Log"), false, LogEntries.wrapped.ExportLog);
 
 #if UNITY_2018_1_OR_NEWER
             menu.AddItem(EditorGUIUtility.TrTextContent("Show Timestamp"), LogEntries.wrapped.showTimestamp, SetTimestamp);
@@ -809,11 +862,13 @@ namespace ConsoleTiny
 
 #if UNITY_2017_3_OR_NEWER
             for (int i = 1; i <= 10; ++i)
+#else
+            for (int i = 1; i <= 2; ++i)
+#endif
             {
                 var lineString = i == 1 ? "Line" : "Lines";
                 menu.AddItem(new GUIContent(string.Format("Log Entry/{0} {1}", i, lineString)), i == Constants.LogStyleLineCount, SetLogLineCount, i);
             }
-#endif
 
             AddStackTraceLoggingMenu(menu);
         }
@@ -843,7 +898,7 @@ namespace ConsoleTiny
                     data.logType = logType;
                     data.stackTraceLogType = stackTraceLogType;
 
-                    menu.AddItem(EditorGUIUtility.TrTextContent("Stack Trace Logging/" + logType + "/" + stackTraceLogType), PlayerSettings.GetStackTraceLogType(logType) == stackTraceLogType,
+                    menu.AddItem(EditorGUIUtility.TextContent("Stack Trace Logging/" + logType + "/" + stackTraceLogType), PlayerSettings.GetStackTraceLogType(logType) == stackTraceLogType,
                         ToggleLogStackTraces, data);
                 }
             }
@@ -860,7 +915,7 @@ namespace ConsoleTiny
 
             foreach (StackTraceLogType stackTraceLogType in Enum.GetValues(typeof(StackTraceLogType)))
             {
-                menu.AddItem(EditorGUIUtility.TrTextContent("Stack Trace Logging/All/" + stackTraceLogType), (StackTraceLogType)stackTraceLogTypeForAll == stackTraceLogType,
+                menu.AddItem(EditorGUIUtility.TextContent("Stack Trace Logging/All/" + stackTraceLogType), (StackTraceLogType)stackTraceLogTypeForAll == stackTraceLogType,
                     ToggleLogStackTracesForAll, stackTraceLogType);
             }
         }

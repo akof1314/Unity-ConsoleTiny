@@ -6,7 +6,9 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using UnityEditor;
+#if UNITY_2017_1_OR_NEWER
 using UnityEditor.PackageManager;
+#endif
 using UnityEngine;
 
 namespace ConsoleTiny

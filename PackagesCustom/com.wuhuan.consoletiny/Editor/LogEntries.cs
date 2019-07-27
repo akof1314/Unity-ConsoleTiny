@@ -4,6 +4,11 @@ using System.IO;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
+#if UNITY_2017_1_OR_NEWER
+using CoreLog = UnityEditor;
+#else
+using CoreLog = UnityEditorInternal;
+#endif
 
 namespace ConsoleTiny
 {
@@ -11,7 +16,7 @@ namespace ConsoleTiny
     {
         public static void Clear()
         {
-            UnityEditor.LogEntries.Clear();
+            CoreLog.LogEntries.Clear();
         }
 
         internal static EntryWrapped wrapped = new EntryWrapped();
@@ -26,7 +31,7 @@ namespace ConsoleTiny
                 public string lower;
                 public int entryCount;
                 public ConsoleFlags flags;
-                public LogEntry entry;
+                public CoreLog.LogEntry entry;
                 public List<StacktraceLineInfo> stacktraceLineInfos;
             }
 
@@ -213,15 +218,15 @@ namespace ConsoleTiny
             public void UpdateEntries()
             {
                 CheckInit();
-                int flags = UnityEditor.LogEntries.consoleFlags;
-                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelLog, true);
-                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelWarning, true);
-                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelError, true);
-                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.Collapse, collapse);
-                int count = UnityEditor.LogEntries.GetCount();
+                int flags = CoreLog.LogEntries.consoleFlags;
+                CoreLog.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelLog, true);
+                CoreLog.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelWarning, true);
+                CoreLog.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelError, true);
+                CoreLog.LogEntries.SetConsoleFlag((int)ConsoleFlags.Collapse, collapse);
+                int count = CoreLog.LogEntries.GetCount();
                 if (count == m_LastEntryCount)
                 {
-                    UnityEditor.LogEntries.consoleFlags = flags;
+                    CoreLog.LogEntries.consoleFlags = flags;
                     CheckRepaint(CheckSearchStringChanged());
                     return;
                 }
@@ -231,29 +236,33 @@ namespace ConsoleTiny
                     ClearEntries();
                 }
 
-                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.ShowTimestamp, true);
-                UnityEditor.LogEntries.StartGettingEntries();
+                CoreLog.LogEntries.SetConsoleFlag((int)ConsoleFlags.ShowTimestamp, true);
+                CoreLog.LogEntries.StartGettingEntries();
                 for (int i = m_LastEntryCount; i < count; i++)
                 {
-                    LogEntry entry = new LogEntry();
-                    if (!UnityEditor.LogEntries.GetEntryInternal(i, entry))
+                    CoreLog.LogEntry entry = new CoreLog.LogEntry();
+                    if (!CoreLog.LogEntries.GetEntryInternal(i, entry))
                     {
                         continue;
                     }
 
                     int mode = 0;
                     string text = null;
-                    UnityEditor.LogEntries.GetLinesAndModeFromEntryInternal(i, 10, ref mode, ref text);
+#if UNITY_2017_1_OR_NEWER
+                    CoreLog.LogEntries.GetLinesAndModeFromEntryInternal(i, 10, ref mode, ref text);
+#else
+                    CoreLog.LogEntries.GetFirstTwoLinesEntryTextAndModeInternal(i, ref mode, ref text);
+#endif
 
                     int entryCount = 0;
                     if (collapse)
                     {
-                        entryCount = UnityEditor.LogEntries.GetEntryCount(i);
+                        entryCount = CoreLog.LogEntries.GetEntryCount(i);
                     }
                     AddEntry(i, entry, text, entryCount);
                 }
-                UnityEditor.LogEntries.EndGettingEntries();
-                UnityEditor.LogEntries.consoleFlags = flags;
+                CoreLog.LogEntries.EndGettingEntries();
+                CoreLog.LogEntries.consoleFlags = flags;
                 m_LastEntryCount = count;
 
                 CheckSearchStringChanged();
@@ -269,7 +278,7 @@ namespace ConsoleTiny
                 m_TypeCounts = new[] { 0, 0, 0 };
             }
 
-            private void AddEntry(int row, LogEntry entry, string text, int entryCount)
+            private void AddEntry(int row, CoreLog.LogEntry entry, string text, int entryCount)
             {
                 EntryInfo entryInfo = new EntryInfo
                 {
@@ -430,13 +439,18 @@ namespace ConsoleTiny
             {
                 int num = numberOfLines;
                 int i = -1;
-                while (num-- > 0)
+                for (int j = 1, k = 0; j <= num; j++)
                 {
-                    int j = s.IndexOf('\n', i + 1);
-                    if (j != -1 && num >= 0)
+                    i = s.IndexOf('\n', i + 1);
+                    if (i == -1)
                     {
-                        i = j;
+                        if (k < num)
+                        {
+                            i = s.Length;
+                        }
+                        break;
                     }
+                    k++;
                 }
 
                 if (i != -1)
