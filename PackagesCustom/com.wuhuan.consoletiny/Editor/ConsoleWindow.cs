@@ -283,7 +283,7 @@ namespace ConsoleTiny
             if (ms_ConsoleWindow == null)
                 return;
 
-            ms_ConsoleWindow.m_NextRepaint = EditorApplication.timeSinceStartup + SearchableEditorWindow.k_SearchTimerDelaySecs;
+            ms_ConsoleWindow.m_NextRepaint = EditorApplication.timeSinceStartup + 0.25f;
         }
 
         public ConsoleWindow()
