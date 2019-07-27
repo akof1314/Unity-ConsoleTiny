@@ -233,7 +233,7 @@ namespace ConsoleTiny
 
                 UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.ShowTimestamp, true);
                 UnityEditor.LogEntries.StartGettingEntries();
-                for (int i = m_LastEntryCount - 1; i < count; i++)
+                for (int i = m_LastEntryCount; i < count; i++)
                 {
                     LogEntry entry = new LogEntry();
                     if (!UnityEditor.LogEntries.GetEntryInternal(i, entry))
@@ -442,10 +442,12 @@ namespace ConsoleTiny
                 if (i != -1)
                 {
                     int startIndex = 0;
+#if UNITY_2018_1_OR_NEWER
                     if (!showTimestamp)
                     {
                         startIndex = 11;
                     }
+#endif
                     return s.Substring(startIndex, i - startIndex);
                 }
                 return s;
@@ -658,7 +660,8 @@ namespace ConsoleTiny
                                     filePathPart.Substring(lineIndex + 1, (endLineIndex) - (lineIndex + 1));
                                 string filePath = filePathPart.Substring(0, lineIndex);
 
-                                if (!filePath.StartsWith(fileInBuildSlave, StringComparison.Ordinal))
+                                bool isInBuildSlave = filePath.StartsWith(fileInBuildSlave, StringComparison.Ordinal);
+                                if (!isInBuildSlave)
                                 {
                                     alphaColor = false;
                                 }
@@ -666,7 +669,7 @@ namespace ConsoleTiny
                                 info.filePath = filePath;
                                 info.lineNum = int.Parse(lineString);
 
-                                if (filePath.Length > 2 && filePath[1] == ':')
+                                if (filePath.Length > 2 && filePath[1] == ':' && !isInBuildSlave)
                                 {
                                     Uri uriFile = new Uri(filePath);
                                     Uri relativeUri = uriRoot.MakeRelativeUri(uriFile);
@@ -692,17 +695,24 @@ namespace ConsoleTiny
 
                 if (alphaColor)
                 {
-                    info.text = $"<color=#{Constants.colorNamespaceAlpha}>{namespaceString}</color>" + $"<color=#{Constants.colorClassAlpha}>{classString}</color>" +
-                                $"<color=#{Constants.colorMethodAlpha}>{methodString}</color>" + $"<color=#{Constants.colorParametersAlpha}>{argsString}</color>" +
-                                $"<color=#{Constants.colorPathAlpha}>{fileString}</color>" + $"<color=#{Constants.colorFilenameAlpha}>{fileNameString}</color>" +
-                                $"<color=#{Constants.colorPathAlpha}>{fileLineString}</color>";
+                    info.text =
+                        string.Format("<color=#{0}>{1}</color>", Constants.colorNamespaceAlpha, namespaceString) +
+                        string.Format("<color=#{0}>{1}</color>", Constants.colorClassAlpha, classString) +
+                        string.Format("<color=#{0}>{1}</color>", Constants.colorMethodAlpha, methodString) +
+                        string.Format("<color=#{0}>{1}</color>", Constants.colorParametersAlpha, argsString) +
+                        string.Format("<color=#{0}>{1}</color>", Constants.colorPathAlpha, fileString) +
+                        string.Format("<color=#{0}>{1}</color>", Constants.colorFilenameAlpha, fileNameString) +
+                        string.Format("<color=#{0}>{1}</color>", Constants.colorPathAlpha, fileLineString);
                 }
                 else
                 {
-                    info.text = $"<color=#{Constants.colorNamespace}>{namespaceString}</color>" + $"<color=#{Constants.colorClass}>{classString}</color>" +
-                                $"<color=#{Constants.colorMethod}>{methodString}</color>" + $"<color=#{Constants.colorParameters}>{argsString}</color>" +
-                                $"<color=#{Constants.colorPath}>{fileString}</color>" + $"<color=#{Constants.colorFilename}>{fileNameString}</color>" +
-                                $"<color=#{Constants.colorPath}>{fileLineString}</color>";
+                    info.text = string.Format("<color=#{0}>{1}</color>", Constants.colorNamespace, namespaceString) +
+                                string.Format("<color=#{0}>{1}</color>", Constants.colorClass, classString) +
+                                string.Format("<color=#{0}>{1}</color>", Constants.colorMethod, methodString) +
+                                string.Format("<color=#{0}>{1}</color>", Constants.colorParameters, argsString) +
+                                string.Format("<color=#{0}>{1}</color>", Constants.colorPath, fileString) +
+                                string.Format("<color=#{0}>{1}</color>", Constants.colorFilename, fileNameString) +
+                                string.Format("<color=#{0}>{1}</color>", Constants.colorPath, fileLineString);
                 }
 
                 return true;
@@ -759,16 +769,19 @@ namespace ConsoleTiny
                                 filePath.Length - namespaceString.Length - luaFileExt.Length);
 
 
-                            info.text = $"	<color=#{Constants.colorNamespace}>{namespaceString}</color>" +
-                                        $"<color=#{Constants.colorClass}>{classString}</color>" + $"<color=#{Constants.colorPath}>:{lineString}</color>" +
-                                        $"<color=#{Constants.colorPath}>{luaMethodBefore}</color>" +
-                                        $"<color=#{Constants.colorMethod}>{methodString}</color>";
+                            info.text = string.Format("	<color=#{0}>{1}</color>", Constants.colorNamespace,
+                                            namespaceString) +
+                                        string.Format("<color=#{0}>{1}</color>", Constants.colorClass, classString) +
+                                        string.Format("<color=#{0}>:{1}</color>", Constants.colorPath, lineString) +
+                                        string.Format("<color=#{0}>{1}</color>", Constants.colorPath, luaMethodBefore) +
+                                        string.Format("<color=#{0}>{1}</color>", Constants.colorMethod, methodString);
                         }
                     }
                 }
                 else
                 {
-                    info.text = $"<color=#{Constants.colorPathAlpha}>{preMethodString}</color>" + $"<color=#{Constants.colorMethodAlpha}>{methodString}</color>";
+                    info.text = string.Format("<color=#{0}>{1}</color>", Constants.colorPathAlpha, preMethodString) +
+                                string.Format("<color=#{0}>{1}</color>", Constants.colorMethodAlpha, methodString);
                 }
 
                 return true;

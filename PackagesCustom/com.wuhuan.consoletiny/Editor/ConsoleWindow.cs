@@ -284,7 +284,11 @@ namespace ConsoleTiny
             titleContent = EditorGUIUtility.TrTextContentWithIcon("Console", "UnityEditor.ConsoleWindow");
             titleContent = new GUIContent(titleContent) { text = "ConsoleT" };
             ms_ConsoleWindow = this;
+#if UNITY_2018_1_OR_NEWER
             m_DevBuild = Unsupported.IsDeveloperMode();
+#else
+            m_DevBuild = Unsupported.IsDeveloperBuild();
+#endif
             LogEntries.wrapped.searchHistory = m_SearchHistory;
 
             Constants.LogStyleLineCount = EditorPrefs.GetInt("ConsoleWindowLogLineCount", 2);
@@ -674,7 +678,11 @@ namespace ConsoleTiny
                 Event.current.Use();
             }
 
-            LogEntries.wrapped.searchString = EditorGUI.ToolbarSearchField(rect, searchText, showHistory);
+            LogEntries.wrapped.searchString = EditorGUI.ToolbarSearchField(
+#if !UNITY_2018_1_OR_NEWER
+                GUIUtility.GetControlID("EditorSearchField".GetHashCode(), FocusType.Keyboard, position),
+#endif
+                rect, searchText, showHistory);
         }
 
         private void OnSetFilteringHistoryCallback(object userData, string[] options, int selected)
@@ -682,7 +690,7 @@ namespace ConsoleTiny
             LogEntries.wrapped.searchString = options[selected];
         }
 
-        #region Stacktrace
+#region Stacktrace
 
         private void StacktraceListView(Event e, GUIContent tempContent)
         {

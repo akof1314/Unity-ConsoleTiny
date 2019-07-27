@@ -19,7 +19,7 @@ public class NewBehaviourScript : MonoBehaviour
     public void Test22()
     {
         Debug.Log("abcabc");
-        Debug.Log("a2220bcabc");
+        Debug.Log("a222111110bcabc");
         Debug.Log("abcabc");
     }
 

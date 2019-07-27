@@ -21,7 +21,7 @@ namespace ConsoleTiny
         private FieldInfo m_VsProcessFi;
         private MethodInfo m_GetWindowText;
         private MethodInfo m_VisualStudioExecutable;
-        private MethodInfo m_AllowSetForegroundWindow;
+        //private MethodInfo m_AllowSetForegroundWindow;
         private object m_ScriptOpener;
         private string m_SolutionFile;
 
@@ -50,7 +50,7 @@ namespace ConsoleTiny
             Type win32Type = m_Assembly.GetType("SyntaxTree.VisualStudio.Unity.Bridge.Win32");
             m_GetWindowText = win32Type.GetMethod("GetWindowText", BindingFlags.Public | BindingFlags.Static, null,
                 new Type[] { typeof(int) }, null);
-            m_AllowSetForegroundWindow = win32Type.GetMethod("AllowSetForegroundWindow", BindingFlags.Public | BindingFlags.Static);
+            //m_AllowSetForegroundWindow = win32Type.GetMethod("AllowSetForegroundWindow", BindingFlags.Public | BindingFlags.Static);
 
             Type productInfoType = m_Assembly.GetType("SyntaxTree.VisualStudio.Unity.ProductInfo");
             m_VisualStudioExecutable = productInfoType.GetMethod("VisualStudioExecutable", BindingFlags.Public | BindingFlags.Static);
@@ -190,7 +190,7 @@ namespace ConsoleTiny
             }
 
             string rootDirectory = Path.Combine(Application.dataPath, "..");
-            string projectDirectory = rootDirectory;
+            //string projectDirectory = rootDirectory;
             string fileFullPath = Path.GetFullPath(file.Replace('/', '\\'));
             string dirPath = fileFullPath;
 
@@ -212,6 +212,7 @@ namespace ConsoleTiny
                 }
             } while (true);
 
+#if UNITY_2018_1_OR_NEWER
             var packageInfos = Packages.GetAll();
             foreach (var packageInfo in packageInfos)
             {
@@ -221,6 +222,17 @@ namespace ConsoleTiny
                     return true;
                 }
             }
+#elif UNITY_2017_1_OR_NEWER
+            var packageInfos = UnityEditor.PackageInfo.GetPackageList();
+            foreach (var packageInfo in packageInfos)
+            {
+                if (fileFullPath.StartsWith(packageInfo.packagePath, StringComparison.Ordinal))
+                {
+                    sao.OpenEditor(rootDirectory, fileFullPath, line);
+                    return true;
+                }
+            }
+#endif
             return false;
         }
     }
