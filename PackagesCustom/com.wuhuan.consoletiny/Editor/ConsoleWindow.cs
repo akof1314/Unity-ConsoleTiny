@@ -1,10 +1,12 @@
 ﻿using System;
-using UnityEngine;
 using System.Globalization;
+using UnityEngine;
 using UnityEditor;
+#if UNITY_2018_3_OR_NEWER
 using UnityEngine.Experimental.Networking.PlayerConnection;
 using UnityEditor.Experimental.Networking.PlayerConnection;
 using ConnectionGUILayout = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUILayout;
+#endif
 using EditorGUI = UnityEditor.EditorGUI;
 using EditorGUILayout = UnityEditor.EditorGUILayout;
 using EditorGUIUtility = UnityEditor.EditorGUIUtility;
@@ -146,8 +148,7 @@ namespace ConsoleTiny
         private int m_StacktraceLineContextClickRow;
         private int m_ActiveInstanceID = 0;
         bool m_DevBuild;
-
-        Vector2 m_TextScroll = Vector2.zero;
+        private string[] m_SearchHistory = new[] { "" };
 
         SplitterState spl = new SplitterState(new float[] { 70, 30 }, new int[] { 32, 32 }, null);
 
@@ -158,6 +159,7 @@ namespace ConsoleTiny
 
         int ms_LVHeight = 0;
 
+#if UNITY_2018_3_OR_NEWER
         class ConsoleAttachToPlayerState : GeneralConnectionState
         {
             static class Content
@@ -205,6 +207,7 @@ namespace ConsoleTiny
         }
 
         IConnectionState m_ConsoleAttachToPlayerState;
+#endif
 
         enum ConsoleFlags
         {
@@ -223,27 +226,7 @@ namespace ConsoleTiny
         };
 
         static ConsoleWindow ms_ConsoleWindow = null;
-
-        static void ShowConsoleWindowImmediate()
-        {
-            ShowConsoleWindow(true);
-        }
-
-        public static void ShowConsoleWindow(bool immediate)
-        {
-            if (ms_ConsoleWindow == null)
-            {
-                ms_ConsoleWindow = ScriptableObject.CreateInstance<ConsoleWindow>();
-                ms_ConsoleWindow.Show(immediate);
-                ms_ConsoleWindow.Focus();
-            }
-            else
-            {
-                ms_ConsoleWindow.Show(immediate);
-                ms_ConsoleWindow.Focus();
-            }
-        }
-
+        
         static internal void LoadIcons()
         {
             if (ms_LoadedIcons)
@@ -291,8 +274,10 @@ namespace ConsoleTiny
 
         void OnEnable()
         {
+#if UNITY_2018_3_OR_NEWER
             if (m_ConsoleAttachToPlayerState == null)
                 m_ConsoleAttachToPlayerState = new ConsoleAttachToPlayerState(this);
+#endif
 
             MakeSureConsoleAlwaysOnlyOne();
 
@@ -300,6 +285,7 @@ namespace ConsoleTiny
             titleContent = new GUIContent(titleContent) { text = "ConsoleT" };
             ms_ConsoleWindow = this;
             m_DevBuild = Unsupported.IsDeveloperMode();
+            LogEntries.wrapped.searchHistory = m_SearchHistory;
 
             Constants.LogStyleLineCount = EditorPrefs.GetInt("ConsoleWindowLogLineCount", 2);
         }
@@ -320,9 +306,11 @@ namespace ConsoleTiny
 
         void OnDisable()
         {
+#if UNITY_2018_3_OR_NEWER
             m_ConsoleAttachToPlayerState?.Dispose();
             m_ConsoleAttachToPlayerState = null;
-
+#endif
+            m_SearchHistory = LogEntries.wrapped.searchHistory;
             if (ms_ConsoleWindow == this)
                 ms_ConsoleWindow = null;
         }
@@ -471,15 +459,15 @@ namespace ConsoleTiny
 
             EditorGUILayout.Space();
 
-            bool wasCollapsed = HasFlag(ConsoleFlags.Collapse);
-            SetFlag(ConsoleFlags.Collapse, GUILayout.Toggle(wasCollapsed, Constants.CollapseLabel, Constants.MiniButton));
+            bool wasCollapsed = LogEntries.wrapped.collapse;
+            LogEntries.wrapped.collapse = GUILayout.Toggle(wasCollapsed, Constants.CollapseLabel, Constants.MiniButton);
 
-            bool collapsedChanged = (wasCollapsed != HasFlag(ConsoleFlags.Collapse));
+            bool collapsedChanged = (wasCollapsed != LogEntries.wrapped.collapse);
             if (collapsedChanged)
             {
                 // unselect if collapsed flag changed
                 m_ListView.row = -1;
-
+                
                 // scroll to bottom
                 m_ListView.scrollPos.y = LogEntries.wrapped.GetCount() * RowHeight;
             }
@@ -490,7 +478,9 @@ namespace ConsoleTiny
 #endif
             SetFlag(ConsoleFlags.ErrorPause, GUILayout.Toggle(HasFlag(ConsoleFlags.ErrorPause), Constants.ErrorPauseLabel, Constants.MiniButton));
 
+#if UNITY_2018_3_OR_NEWER
             ConnectionGUILayout.AttachToPlayerDropdown(m_ConsoleAttachToPlayerState, EditorStyles.toolbarDropDown);
+#endif
 
             EditorGUILayout.Space();
 
@@ -508,7 +498,7 @@ namespace ConsoleTiny
             SearchField(e);
 
             int errorCount = 0, warningCount = 0, logCount = 0;
-            LogEntries.GetCountsByType(ref errorCount, ref warningCount, ref logCount);
+            LogEntries.wrapped.GetCountsByType(ref errorCount, ref warningCount, ref logCount);
             EditorGUI.BeginChangeCheck();
             bool setLogFlag = GUILayout.Toggle(LogEntries.wrapped.HasFlag((int)ConsoleFlags.LogLevelLog), new GUIContent((logCount <= 999 ? logCount.ToString() : "999+"), logCount > 0 ? iconInfoSmall : iconInfoMono), Constants.MiniButton);
             bool setWarningFlag = GUILayout.Toggle(LogEntries.wrapped.HasFlag((int)ConsoleFlags.LogLevelWarning), new GUIContent((warningCount <= 999 ? warningCount.ToString() : "999+"), warningCount > 0 ? iconWarnSmall : iconWarnMono), Constants.MiniButton);
@@ -535,7 +525,7 @@ namespace ConsoleTiny
             {
                 int selectedRow = -1;
                 bool openSelectedItem = false;
-                bool collapsed = HasFlag(ConsoleFlags.Collapse);
+                bool collapsed = LogEntries.wrapped.collapse;
                 foreach (ListViewElement el in ListViewGUI.ListView(m_ListView, Constants.Box))
                 {
                     if (e.type == EventType.MouseDown && e.button == 0 && el.position.Contains(e.mousePosition))
@@ -548,7 +538,8 @@ namespace ConsoleTiny
                     else if (e.type == EventType.Repaint)
                     {
                         int mode = 0;
-                        string text = LogEntries.wrapped.GetEntryLinesAndFlag(el.row, ref mode);
+                        int entryCount = 0;
+                        string text = LogEntries.wrapped.GetEntryLinesAndFlagAndCount(el.row, ref mode, ref entryCount);
                         ConsoleFlags flag = (ConsoleFlags) mode;
                         bool isSelected = LogEntries.wrapped.IsEntrySelected(el.row);
 
@@ -568,7 +559,7 @@ namespace ConsoleTiny
                         if (collapsed)
                         {
                             Rect badgeRect = el.position;
-                            tempContent.text = LogEntries.wrapped.GetEntryCount(el.row).ToString(CultureInfo.InvariantCulture);
+                            tempContent.text = entryCount.ToString(CultureInfo.InvariantCulture);
                             Vector2 badgeSize = Constants.CountBadge.CalcSize(tempContent);
                             badgeRect.xMin = badgeRect.xMax - badgeSize.x;
                             badgeRect.yMin += ((badgeRect.yMax - badgeRect.yMin) - badgeSize.y) * 0.5f;
@@ -804,7 +795,9 @@ namespace ConsoleTiny
             menu.AddItem(EditorGUIUtility.TrTextContent("Open Editor Log"), false, UnityEditorInternal.InternalEditorUtility.OpenEditorConsole);
             menu.AddItem(EditorGUIUtility.TrTextContent("Export Console Log"), false, LogEntries.wrapped.ExportLog);
 
+#if UNITY_2018_1_OR_NEWER
             menu.AddItem(EditorGUIUtility.TrTextContent("Show Timestamp"), LogEntries.wrapped.showTimestamp, SetTimestamp);
+#endif
 
 #if UNITY_2017_3_OR_NEWER
             for (int i = 1; i <= 10; ++i)

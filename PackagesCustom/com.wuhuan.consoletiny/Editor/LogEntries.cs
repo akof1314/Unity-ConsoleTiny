@@ -14,11 +14,6 @@ namespace ConsoleTiny
             UnityEditor.LogEntries.Clear();
         }
 
-        public static void GetCountsByType(ref int errorCount, ref int warningCount, ref int logCount)
-        {
-            UnityEditor.LogEntries.GetCountsByType(ref errorCount, ref warningCount, ref logCount);
-        }
-
         internal static EntryWrapped wrapped = new EntryWrapped();
 
         internal class EntryWrapped
@@ -29,6 +24,7 @@ namespace ConsoleTiny
                 public string lines;
                 public string text;
                 public string lower;
+                public int entryCount;
                 public ConsoleFlags flags;
                 public LogEntry entry;
                 public List<StacktraceLineInfo> stacktraceLineInfos;
@@ -63,6 +59,7 @@ namespace ConsoleTiny
 
             enum ConsoleFlags
             {
+                Collapse = 1 << 0,
                 LogLevelLog = 1 << 7,
                 LogLevelWarning = 1 << 8,
                 LogLevelError = 1 << 9,
@@ -86,6 +83,21 @@ namespace ConsoleTiny
                 }
             }
 
+            public bool collapse
+            {
+                get { return m_Collapse; }
+                set
+                {
+                    if (m_Collapse != value)
+                    {
+                        m_Collapse = value;
+                        EditorPrefs.SetBool("ConsoleTiny_Collapse", value);
+                        ClearEntries();
+                        UpdateEntries();
+                    }
+                }
+            }
+
             public string searchString
             {
                 get { return m_SearchString; }
@@ -105,6 +117,8 @@ namespace ConsoleTiny
             private bool m_Init;
             private int m_NumberOfLines;
             private bool m_ShowTimestamp;
+            private bool m_Collapse;
+            private int[] m_TypeCounts = new[] {0, 0, 0};
             private int m_LastEntryCount = -1;
             private EntryInfo m_SelectedInfo;
             private readonly List<EntryInfo> m_EntryInfos = new List<EntryInfo>();
@@ -131,7 +145,7 @@ namespace ConsoleTiny
                 return m_FilteredInfos.Count;
             }
 
-            public string GetEntryLinesAndFlag(int row, ref int consoleFlag)
+            public string GetEntryLinesAndFlagAndCount(int row, ref int consoleFlag, ref int entryCount)
             {
                 if (row < 0 || row >= m_FilteredInfos.Count)
                 {
@@ -139,7 +153,15 @@ namespace ConsoleTiny
                 }
 
                 consoleFlag = (int)m_FilteredInfos[row].flags;
+                entryCount = m_FilteredInfos[row].entryCount;
                 return m_FilteredInfos[row].text;
+            }
+
+            public void GetCountsByType(ref int errorCount, ref int warningCount, ref int logCount)
+            {
+                errorCount = m_TypeCounts[0];
+                warningCount = m_TypeCounts[1];
+                logCount = m_TypeCounts[2];
             }
 
             public int SetSelectedEntry(int row)
@@ -188,11 +210,6 @@ namespace ConsoleTiny
                 return -1;
             }
 
-            public int GetEntryCount(int row)
-            {
-                return UnityEditor.LogEntries.GetEntryCount(m_FilteredInfos[row].row);
-            }
-
             public void UpdateEntries()
             {
                 CheckInit();
@@ -200,6 +217,7 @@ namespace ConsoleTiny
                 UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelLog, true);
                 UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelWarning, true);
                 UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelError, true);
+                UnityEditor.LogEntries.SetConsoleFlag((int)ConsoleFlags.Collapse, collapse);
                 int count = UnityEditor.LogEntries.GetCount();
                 if (count == m_LastEntryCount)
                 {
@@ -226,7 +244,13 @@ namespace ConsoleTiny
                     int mode = 0;
                     string text = null;
                     UnityEditor.LogEntries.GetLinesAndModeFromEntryInternal(i, 10, ref mode, ref text);
-                    AddEntry(i, entry, text);
+
+                    int entryCount = 0;
+                    if (collapse)
+                    {
+                        entryCount = UnityEditor.LogEntries.GetEntryCount(i);
+                    }
+                    AddEntry(i, entry, text, entryCount);
                 }
                 UnityEditor.LogEntries.EndGettingEntries();
                 UnityEditor.LogEntries.consoleFlags = flags;
@@ -242,15 +266,17 @@ namespace ConsoleTiny
                 m_EntryInfos.Clear();
                 m_FilteredInfos.Clear();
                 m_LastEntryCount = -1;
+                m_TypeCounts = new[] { 0, 0, 0 };
             }
 
-            private void AddEntry(int row, LogEntry entry, string text)
+            private void AddEntry(int row, LogEntry entry, string text, int entryCount)
             {
                 EntryInfo entryInfo = new EntryInfo
                 {
                     row = row,
                     lines = text,
                     text = GetNumberLines(text),
+                    entryCount = entryCount,
                     flags = GetConsoleFlagFromMode(entry.mode),
                     entry = entry
                 };
@@ -262,6 +288,19 @@ namespace ConsoleTiny
                     (string.IsNullOrEmpty(m_SearchString) || entryInfo.lower.Contains(m_SearchString.ToLower())))
                 {
                     m_FilteredInfos.Add(entryInfo);
+                }
+
+                if (entryInfo.flags == ConsoleFlags.LogLevelError)
+                {
+                    m_TypeCounts[0]++;
+                }
+                else if (entryInfo.flags == ConsoleFlags.LogLevelWarning)
+                {
+                    m_TypeCounts[1]++;
+                }
+                else
+                {
+                    m_TypeCounts[2]++;
                 }
             }
 
@@ -284,6 +323,7 @@ namespace ConsoleTiny
                 m_Init = true;
                 m_ConsoleFlagsComing = EditorPrefs.GetInt("ConsoleTiny_ConsoleFlags", 896);
                 m_ShowTimestamp = EditorPrefs.GetBool("ConsoleTiny_ShowTimestamp", false);
+                m_Collapse = EditorPrefs.GetBool("ConsoleTiny_Collapse", false);
             }
 
             private bool CheckSearchStringChanged()
