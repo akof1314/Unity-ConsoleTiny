@@ -589,7 +589,8 @@ namespace ConsoleTiny
                     {
                         int mode = 0;
                         int entryCount = 0;
-                        string text = LogEntries.wrapped.GetEntryLinesAndFlagAndCount(el.row, ref mode, ref entryCount);
+                        int searchIndex = 0;
+                        string text = LogEntries.wrapped.GetEntryLinesAndFlagAndCount(el.row, ref mode, ref entryCount, ref searchIndex);
                         ConsoleFlags flag = (ConsoleFlags)mode;
                         bool isSelected = LogEntries.wrapped.IsEntrySelected(el.row);
 
@@ -618,7 +619,16 @@ namespace ConsoleTiny
                         // Draw the text
                         tempContent.text = text;
                         GUIStyle errorModeStyle = GetStyleForErrorMode(flag, false, Constants.LogStyleLineCount == 1);
-                        errorModeStyle.Draw(el.position, tempContent, id, isSelected);
+
+                        if (string.IsNullOrEmpty(LogEntries.wrapped.searchString) || searchIndex == -1 || searchIndex >= text.Length)
+                        {
+                            errorModeStyle.Draw(el.position, tempContent, id, isSelected);
+                        }
+                        else
+                        {
+                            int endIndex = searchIndex + LogEntries.wrapped.searchString.Length;
+                            errorModeStyle.DrawWithTextSelection(el.position, tempContent, GUIUtility.keyboardControl, searchIndex, endIndex);
+                        }
 
                         if (collapsed)
                         {

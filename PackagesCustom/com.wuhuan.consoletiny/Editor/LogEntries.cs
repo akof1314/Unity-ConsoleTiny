@@ -30,13 +30,14 @@ namespace ConsoleTiny
                 public string text;
                 public string lower;
                 public int entryCount;
+                public int searchIndex;
                 public ConsoleFlags flags;
                 public CoreLog.LogEntry entry;
                 public List<StacktraceLineInfo> stacktraceLineInfos;
             }
 
             [Flags]
-            internal enum Mode
+            enum Mode
             {
                 Error = 1 << 0,
                 Assert = 1 << 1,
@@ -123,7 +124,7 @@ namespace ConsoleTiny
             private int m_NumberOfLines;
             private bool m_ShowTimestamp;
             private bool m_Collapse;
-            private int[] m_TypeCounts = new[] {0, 0, 0};
+            private int[] m_TypeCounts = new[] { 0, 0, 0 };
             private int m_LastEntryCount = -1;
             private EntryInfo m_SelectedInfo;
             private readonly List<EntryInfo> m_EntryInfos = new List<EntryInfo>();
@@ -150,16 +151,18 @@ namespace ConsoleTiny
                 return m_FilteredInfos.Count;
             }
 
-            public string GetEntryLinesAndFlagAndCount(int row, ref int consoleFlag, ref int entryCount)
+            public string GetEntryLinesAndFlagAndCount(int row, ref int consoleFlag, ref int entryCount, ref int searchIndex)
             {
                 if (row < 0 || row >= m_FilteredInfos.Count)
                 {
                     return String.Empty;
                 }
 
-                consoleFlag = (int)m_FilteredInfos[row].flags;
-                entryCount = m_FilteredInfos[row].entryCount;
-                return m_FilteredInfos[row].text;
+                EntryInfo entryInfo = m_FilteredInfos[row];
+                consoleFlag = (int)entryInfo.flags;
+                entryCount = entryInfo.entryCount;
+                searchIndex = entryInfo.searchIndex;
+                return entryInfo.text;
             }
 
             public void GetCountsByType(ref int errorCount, ref int warningCount, ref int logCount)
@@ -293,8 +296,8 @@ namespace ConsoleTiny
                 m_EntryInfos.Add(entryInfo);
 
                 // 没有将堆栈都进行搜索，以免信息太杂，只根据行数，但是变化行数时不会重新搜索
-                if (HasFlag((int)entryInfo.flags) && 
-                    (string.IsNullOrEmpty(m_SearchString) || entryInfo.lower.Contains(m_SearchString.ToLower())))
+                if (HasFlag((int)entryInfo.flags) && (string.IsNullOrEmpty(m_SearchString) ||
+                      (entryInfo.searchIndex = entryInfo.lower.IndexOf(m_SearchString.ToLower(), StringComparison.Ordinal)) != -1))
                 {
                     m_FilteredInfos.Add(entryInfo);
                 }
@@ -380,7 +383,8 @@ namespace ConsoleTiny
 
                     foreach (var entryInfo in m_EntryInfos)
                     {
-                        if (HasFlag((int)entryInfo.flags) && (!hasSearchString || entryInfo.lower.Contains(searchStringValue)))
+                        if (HasFlag((int)entryInfo.flags) && (!hasSearchString
+                            || (entryInfo.searchIndex = entryInfo.lower.IndexOf(searchStringValue, StringComparison.Ordinal)) != -1))
                         {
                             m_FilteredInfos.Add(entryInfo);
                         }
@@ -390,7 +394,7 @@ namespace ConsoleTiny
                 {
                     for (int i = m_FilteredInfos.Count - 1; i >= 0; i--)
                     {
-                        if (!m_FilteredInfos[i].lower.Contains(searchStringValue))
+                        if ((m_FilteredInfos[i].searchIndex = m_FilteredInfos[i].lower.IndexOf(searchStringValue, StringComparison.Ordinal)) == -1)
                         {
                             m_FilteredInfos.RemoveAt(i);
                         }

@@ -21,6 +21,7 @@ public class NewBehaviourScript : MonoBehaviour
         Debug.Log("abcabc");
         Debug.Log("a222111110bcabc");
         Debug.Log("abcabc");
+        Debug.Log("asdasdasddff<color=#ffffff>" + "ddddddddddddddd2222222222xxx" + "</color>sdfsdfds");
     }
 
     private void Test1(string ta)
