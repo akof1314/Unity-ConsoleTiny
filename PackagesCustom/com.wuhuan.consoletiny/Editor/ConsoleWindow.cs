@@ -61,6 +61,7 @@ namespace ConsoleTiny
             public static readonly string StopForAssertLabel = ("Stop for Assert");
             public static readonly string StopForErrorLabel = ("Stop for Error");
             public static readonly string ClearOnBuildLabel = ("Clear on Build");
+            public static readonly string FirstErrorLabel = ("First Error");
 
             public static int LogStyleLineCount
             {
@@ -560,6 +561,16 @@ namespace ConsoleTiny
             LogEntries.wrapped.SetFlag((int)ConsoleFlags.LogLevelLog, setLogFlag);
             LogEntries.wrapped.SetFlag((int)ConsoleFlags.LogLevelWarning, setWarningFlag);
             LogEntries.wrapped.SetFlag((int)ConsoleFlags.LogLevelError, setErrorFlag);
+
+            if (GUILayout.Button(Constants.FirstErrorLabel, Constants.MiniButton))
+            {
+                int firstErrorIndex = LogEntries.wrapped.GetFirstErrorEntryIndex();
+                if (firstErrorIndex != -1)
+                {
+                    SetActiveEntry(firstErrorIndex);
+                    LogEntries.wrapped.searchFrame = true;
+                }
+            }
 
             GUILayout.EndHorizontal();
 

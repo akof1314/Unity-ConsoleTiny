@@ -218,6 +218,18 @@ namespace ConsoleTiny
                 return -1;
             }
 
+            public int GetFirstErrorEntryIndex()
+            {
+                for (int i = 0; i < m_FilteredInfos.Count; i++)
+                {
+                    if (m_FilteredInfos[i].flags == ConsoleFlags.LogLevelError)
+                    {
+                        return i;
+                    }
+                }
+                return -1;
+            }
+
             public void UpdateEntries()
             {
                 CheckInit();
