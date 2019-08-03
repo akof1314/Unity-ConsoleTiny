@@ -6,10 +6,10 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using UnityEditor;
+using UnityEditorInternal;
 #if UNITY_2017_1_OR_NEWER
 using UnityEditor.PackageManager;
 #endif
-using UnityEngine;
 
 namespace ConsoleTiny
 {
@@ -44,6 +44,10 @@ namespace ConsoleTiny
                 return;
             }
             m_ScriptOpenerType = m_Assembly.GetType("SyntaxTree.VisualStudio.Unity.Bridge.ScriptOpener");
+            if (m_ScriptOpenerType == null)
+            {
+                return;
+            }
             m_WaitForPongFromVisualStudioMi = m_ScriptOpenerType.GetMethod("WaitForPongFromVisualStudio", BindingFlags.Public | BindingFlags.Instance);
             m_TryOpenFileMi = m_ScriptOpenerType.GetMethod("TryOpenFile", BindingFlags.Public | BindingFlags.Instance);
             m_VisualStudioProcessesMi = m_ScriptOpenerType.GetMethod("VisualStudioProcesses", BindingFlags.NonPublic | BindingFlags.Static);
@@ -115,10 +119,49 @@ namespace ConsoleTiny
         public void OpenEditor(string projectPath, string file, int line)
         {
             m_SolutionFile = projectPath;
-            ThreadPool.QueueUserWorkItem(_ =>
+
+            if (m_ScriptOpenerType != null)
             {
-                OpenEditorInter(projectPath, file, line);
-            });
+                ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    OpenEditorInter(projectPath, file, line);
+                });
+            }
+            else
+            {
+                string vsPath = ScriptEditorUtility.GetExternalScriptEditor();
+                if (string.IsNullOrEmpty(vsPath) || !File.Exists(vsPath))
+                {
+                    return;
+                }
+                string exePath = String.Empty;
+
+#if UNITY_2018_1_OR_NEWER
+                var packageInfos = Packages.GetAll();
+                foreach (var packageInfo in packageInfos)
+                {
+                    if (packageInfo.name == "com.wuhuan.consoletiny")
+                    {
+                        exePath = packageInfo.resolvedPath;
+                        break;
+                    }
+                }
+
+#elif UNITY_2017_1_OR_NEWER
+                // TODO
+                exePath = "../../PackagesCustom/com.wuhuan.consoletiny";
+#endif
+
+                if (!string.IsNullOrEmpty(exePath))
+                {
+                    exePath = exePath + "\\Editor\\VisualStudioFileOpenTool.exe";
+
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        OpenEditorInter2(exePath, vsPath, projectPath, file, line);
+                    });
+                }
+            }
         }
 
         private void OpenEditorInter(string projectPath, string file, int line)
@@ -143,6 +186,23 @@ namespace ConsoleTiny
                 }
                 m_ScriptOpener = null;
             }
+        }
+
+        private void OpenEditorInter2(string exePath, string vsPath, string projectPath, string file, int line)
+        {
+            if (!File.Exists(exePath))
+            {
+                return;
+            }
+            
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = String.Format("{0} {1} {2} {3}",
+                    QuotePathIfNeeded(vsPath), QuotePathIfNeeded(projectPath), QuotePathIfNeeded(file), line),
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
         }
 
         private static ScriptAssetOpener sao;
@@ -185,15 +245,28 @@ namespace ConsoleTiny
                 return false;
             }
 
+            string fileFullPath = Path.GetFullPath(file.Replace('/', '\\'));
+
+#if UNITY_2018_1_OR_NEWER
+            var packageInfos = Packages.GetAll();
+            foreach (var packageInfo in packageInfos)
+            {
+                if (fileFullPath.StartsWith(packageInfo.resolvedPath, StringComparison.Ordinal))
+                {
+                    InternalEditorUtility.OpenFileAtLineExternal(fileFullPath, line);
+                    return true;
+                }
+            }
+#elif UNITY_2017_1_OR_NEWER
+            // TODO
+#endif
+
             LoadScriptAssetOpener();
             if (!sao.initialized)
             {
                 return false;
             }
 
-            string rootDirectory = Path.Combine(Application.dataPath, "..");
-            //string projectDirectory = rootDirectory;
-            string fileFullPath = Path.GetFullPath(file.Replace('/', '\\'));
             string dirPath = fileFullPath;
 
             do
@@ -214,27 +287,6 @@ namespace ConsoleTiny
                 }
             } while (true);
 
-#if UNITY_2018_1_OR_NEWER
-            var packageInfos = Packages.GetAll();
-            foreach (var packageInfo in packageInfos)
-            {
-                if (fileFullPath.StartsWith(packageInfo.resolvedPath, StringComparison.Ordinal))
-                {
-                    sao.OpenEditor(rootDirectory, fileFullPath, line);
-                    return true;
-                }
-            }
-#elif UNITY_2017_1_OR_NEWER
-            var packageInfos = UnityEditor.PackageInfo.GetPackageList();
-            foreach (var packageInfo in packageInfos)
-            {
-                if (fileFullPath.StartsWith(packageInfo.packagePath, StringComparison.Ordinal))
-                {
-                    sao.OpenEditor(rootDirectory, fileFullPath, line);
-                    return true;
-                }
-            }
-#endif
             return false;
         }
     }
