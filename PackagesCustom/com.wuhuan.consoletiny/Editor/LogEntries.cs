@@ -84,7 +84,7 @@ namespace ConsoleTiny
                 set
                 {
                     m_ShowTimestamp = value;
-                    EditorPrefs.SetBool("ConsoleTiny_ShowTimestamp", value);
+                    EditorPrefs.SetBool(kPrefShowTimestamp, value);
                     ResetEntriesForNumberLines();
                 }
             }
@@ -97,7 +97,7 @@ namespace ConsoleTiny
                     if (m_Collapse != value)
                     {
                         m_Collapse = value;
-                        EditorPrefs.SetBool("ConsoleTiny_Collapse", value);
+                        EditorPrefs.SetBool(kPrefCollapse, value);
                         ClearEntries();
                         UpdateEntries();
                     }
@@ -129,6 +129,12 @@ namespace ConsoleTiny
             private EntryInfo m_SelectedInfo;
             private readonly List<EntryInfo> m_EntryInfos = new List<EntryInfo>();
             private readonly List<EntryInfo> m_FilteredInfos = new List<EntryInfo>();
+            private readonly CustomFiltersGroup m_CustomFilters = new CustomFiltersGroup();
+
+            private const string kPrefConsoleFlags = "ConsoleTiny_ConsoleFlags";
+            private const string kPrefShowTimestamp = "ConsoleTiny_ShowTimestamp";
+            private const string kPrefCollapse = "ConsoleTiny_Collapse";
+            private const string kPrefCustomFilters = "ConsoleTiny_CustomFilters";
 
             public bool HasFlag(int flags) { return (m_ConsoleFlags & flags) != 0; }
 
@@ -345,9 +351,10 @@ namespace ConsoleTiny
                 }
 
                 m_Init = true;
-                m_ConsoleFlagsComing = EditorPrefs.GetInt("ConsoleTiny_ConsoleFlags", 896);
-                m_ShowTimestamp = EditorPrefs.GetBool("ConsoleTiny_ShowTimestamp", false);
-                m_Collapse = EditorPrefs.GetBool("ConsoleTiny_Collapse", false);
+                m_ConsoleFlagsComing = EditorPrefs.GetInt(kPrefConsoleFlags, 896);
+                m_ShowTimestamp = EditorPrefs.GetBool(kPrefShowTimestamp, false);
+                m_Collapse = EditorPrefs.GetBool(kPrefCollapse, false);
+                m_CustomFilters.Load();
             }
 
             private bool CheckSearchStringChanged()
@@ -421,7 +428,7 @@ namespace ConsoleTiny
 
                 if (flagsChangedValue)
                 {
-                    EditorPrefs.SetInt("ConsoleTiny_ConsoleFlags", m_ConsoleFlags);
+                    EditorPrefs.SetInt(kPrefConsoleFlags, m_ConsoleFlags);
                 }
 
                 searchFrame = IsSelectedEntryShow();
@@ -502,6 +509,114 @@ namespace ConsoleTiny
                 }
                 File.WriteAllText(filePath, sb.ToString());
             }
+
+            #region CustomFilters
+
+            public class CustomFiltersItem
+            {
+                private string m_Filter;
+                private bool m_Toggle;
+
+                public bool changed { get; set; }
+
+                public string filter
+                {
+                    get { return m_Filter; }
+                    set
+                    {
+                        if (value != m_Filter)
+                        {
+                            m_Filter = value;
+                            changed = true;
+                        }
+                    }
+                }
+
+                public bool toggle
+                {
+                    get { return m_Toggle; }
+                    set
+                    {
+                        if (value != m_Toggle)
+                        {
+                            m_Toggle = value;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+
+            public class CustomFiltersGroup
+            {
+                public readonly List<CustomFiltersItem> filters = new List<CustomFiltersItem>();
+                public bool changed { get; set; }
+
+                public bool IsChanged()
+                {
+                    foreach (var filter in filters)
+                    {
+                        if (filter.changed)
+                        {
+                            return true;
+                        }
+                    }
+                    return changed;
+                }
+
+                public void ClearChanged()
+                {
+                    changed = false;
+                    foreach (var filter in filters)
+                    {
+                        filter.changed = false;
+                    }
+                }
+
+                public void Load()
+                {
+                    filters.Clear();
+                    var val = EditorPrefs.GetString(kPrefCustomFilters, String.Empty);
+                    if (string.IsNullOrEmpty(val))
+                    {
+                        return;
+                    }
+
+                    var vals = val.Split('\n');
+                    try
+                    {
+                        for (int i = 0; i < vals.Length && (i + 1) < vals.Length; i++)
+                        {
+                            var item = new CustomFiltersItem { filter = vals[i], toggle = bool.Parse(vals[i + 1]) };
+                            filters.Add(item);
+                            i++;
+                        }
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
+
+                public void Save()
+                {
+                    StringBuilder sb = new StringBuilder();
+                    foreach (var filter in filters)
+                    {
+                        sb.Append(filter.filter);
+                        sb.Append('\n');
+                        sb.Append(filter.toggle.ToString());
+                        sb.Append('\n');
+                    }
+                    EditorPrefs.SetString(kPrefCustomFilters, sb.ToString());
+                }
+            }
+
+            public CustomFiltersGroup customFilters
+            {
+                get { return m_CustomFilters; }
+            }
+
+            #endregion
 
             #region Stacktrace
 

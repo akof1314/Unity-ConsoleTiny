@@ -62,6 +62,7 @@ namespace ConsoleTiny
             public static readonly string StopForErrorLabel = ("Stop for Error");
             public static readonly string ClearOnBuildLabel = ("Clear on Build");
             public static readonly string FirstErrorLabel = ("First Error");
+            public static readonly string CustomFiltersLabel = ("Custom Filters");
 
             public static int LogStyleLineCount
             {
@@ -92,7 +93,7 @@ namespace ConsoleTiny
                 LogStyle = "CN EntryInfo";
                 WarningStyle = "CN EntryWarn";
                 ErrorStyle = "CN EntryError";
-                
+
                 EvenBackground = "CN EntryBackEven";
                 OddBackground = "CN EntryBackodd";
                 MessageStyle = "CN Message";
@@ -183,8 +184,9 @@ namespace ConsoleTiny
 
         static bool ms_LoadedIcons = false;
         static internal Texture2D iconInfo, iconWarn, iconError;
-        static internal Texture2D iconInfoSmall, iconWarnSmall, iconErrorSmall;
-        static internal Texture2D iconInfoMono, iconWarnMono, iconErrorMono;
+        static internal Texture2D iconInfoSmall, iconWarnSmall, iconErrorSmall, iconFirstErrorSmall;
+        static internal Texture2D iconInfoMono, iconWarnMono, iconErrorMono, iconFirstErrorMono, iconCustomFiltersMono;
+        static internal Texture2D[] iconCustomFiltersSmalls;
 
         int ms_LVHeight = 0;
 
@@ -268,6 +270,7 @@ namespace ConsoleTiny
             iconInfoSmall = EditorGUIUtility.LoadIcon("console.infoicon.sml");
             iconWarnSmall = EditorGUIUtility.LoadIcon("console.warnicon.sml");
             iconErrorSmall = EditorGUIUtility.LoadIcon("console.erroricon.sml");
+            iconFirstErrorSmall = EditorGUIUtility.LoadIcon("sv_icon_dot14_sml");
 
             // TODO: Once we get the proper monochrome images put them here.
             /*iconInfoMono = EditorGUIUtility.LoadIcon("console.infoicon.mono");
@@ -276,6 +279,14 @@ namespace ConsoleTiny
             iconInfoMono = EditorGUIUtility.LoadIcon("console.infoicon.sml");
             iconWarnMono = EditorGUIUtility.LoadIcon("console.warnicon.inactive.sml");
             iconErrorMono = EditorGUIUtility.LoadIcon("console.erroricon.inactive.sml");
+            iconFirstErrorMono = EditorGUIUtility.LoadIcon("sv_icon_dot8_sml");
+            iconCustomFiltersMono = EditorGUIUtility.LoadIcon("sv_icon_dot0_sml");
+
+            iconCustomFiltersSmalls = new Texture2D[7];
+            for (int i = 0; i < 7; i++)
+            {
+                iconCustomFiltersSmalls[i] = EditorGUIUtility.LoadIcon("sv_icon_dot" + (i + 1) + "_sml");
+            }
             Constants.Init();
         }
 
@@ -562,7 +573,7 @@ namespace ConsoleTiny
             LogEntries.wrapped.SetFlag((int)ConsoleFlags.LogLevelWarning, setWarningFlag);
             LogEntries.wrapped.SetFlag((int)ConsoleFlags.LogLevelError, setErrorFlag);
 
-            if (GUILayout.Button(Constants.FirstErrorLabel, Constants.MiniButton))
+            if (GUILayout.Button(new GUIContent(errorCount > 0 ? iconFirstErrorSmall : iconFirstErrorMono, Constants.FirstErrorLabel), Constants.MiniButton))
             {
                 int firstErrorIndex = LogEntries.wrapped.GetFirstErrorEntryIndex();
                 if (firstErrorIndex != -1)
@@ -764,6 +775,25 @@ namespace ConsoleTiny
                 GUIUtility.GetControlID("EditorSearchField".GetHashCode(), FocusType.Keyboard, position),
 #endif
                 rect, searchText, showHistory);
+
+            if (GUILayout.Button(new GUIContent(iconCustomFiltersMono, Constants.CustomFiltersLabel), EditorStyles.toolbarDropDown))
+            {
+                Rect buttonRect = rect;
+                buttonRect.x += buttonRect.width;
+                var menuData = new CustomFiltersItemProvider(LogEntries.wrapped.customFilters);
+                var flexibleMenu = new FlexibleMenu(menuData, -1, new CustomFiltersModifyItemUI(), null);
+                PopupWindow.Show(buttonRect, flexibleMenu);
+            }
+
+            int iconIndex = 0;
+            foreach (var filter in LogEntries.wrapped.customFilters.filters)
+            {
+                if (iconIndex >= 7)
+                {
+                    iconIndex = 0;
+                }
+                filter.toggle = GUILayout.Toggle(filter.toggle, new GUIContent(filter.filter, iconCustomFiltersSmalls[iconIndex++]), Constants.MiniButton);
+            }
         }
 
         private void OnSetFilteringHistoryCallback(object userData, string[] options, int selected)
@@ -971,4 +1001,152 @@ namespace ConsoleTiny
                 Debug.LogError("Scope was not disposed! You should use the 'using' keyword or manually call Dispose.");
         }
     }
+
+    #region CustomFilters
+
+    internal class CustomFiltersItemProvider : IFlexibleMenuItemProvider
+    {
+        private readonly LogEntries.EntryWrapped.CustomFiltersGroup m_Groups;
+
+        public CustomFiltersItemProvider(LogEntries.EntryWrapped.CustomFiltersGroup groups)
+        {
+            m_Groups = groups;
+        }
+
+        public int Count()
+        {
+            return m_Groups.filters.Count;
+        }
+
+        public object GetItem(int index)
+        {
+            return m_Groups.filters[index];
+        }
+
+        public int Add(object obj)
+        {
+            m_Groups.filters.Add(new LogEntries.EntryWrapped.CustomFiltersItem() { filter = (string)obj, changed = false });
+            m_Groups.Save();
+            return Count() - 1;
+        }
+
+        public void Replace(int index, object newPresetObject)
+        {
+            m_Groups.filters[index].filter = (string)newPresetObject;
+            m_Groups.Save();
+        }
+
+        public void Remove(int index)
+        {
+            m_Groups.filters.RemoveAt(index);
+            m_Groups.changed = true;
+            m_Groups.Save();
+        }
+
+        public object Create()
+        {
+            return "log";
+        }
+
+        public void Move(int index, int destIndex, bool insertAfterDestIndex)
+        {
+            Debug.LogError("Missing impl");
+        }
+
+        public string GetName(int index)
+        {
+            return m_Groups.filters[index].filter;
+        }
+
+        public bool IsModificationAllowed(int index)
+        {
+            return true;
+        }
+
+        public int[] GetSeperatorIndices()
+        {
+            return new int[0];
+        }
+    }
+
+    internal class CustomFiltersModifyItemUI : FlexibleMenuModifyItemUI
+    {
+        private static class Styles
+        {
+            public static GUIContent headerAdd = EditorGUIUtility.TextContent("Add");
+            public static GUIContent headerEdit = EditorGUIUtility.TextContent("Edit");
+            public static GUIContent optionalText = EditorGUIUtility.TextContent("Search");
+            public static GUIContent ok = EditorGUIUtility.TextContent("OK");
+            public static GUIContent cancel = EditorGUIUtility.TextContent("Cancel");
+        }
+
+        private string m_TextSearch;
+
+        public override void OnClose()
+        {
+            m_TextSearch = null;
+            base.OnClose();
+        }
+
+        public override Vector2 GetWindowSize()
+        {
+            return new Vector2(330f, 80f);
+        }
+
+        public override void OnGUI(Rect rect)
+        {
+            string itemValue = m_Object as string;
+            if (itemValue == null)
+            {
+                Debug.LogError("Invalid object");
+                return;
+            }
+
+            if (m_TextSearch == null)
+            {
+                m_TextSearch = itemValue;
+            }
+
+            const float kColumnWidth = 70f;
+            const float kSpacing = 10f;
+
+            GUILayout.Space(3);
+            GUILayout.Label(m_MenuType == MenuType.Add ? Styles.headerAdd : Styles.headerEdit, EditorStyles.boldLabel);
+
+            Rect seperatorRect = GUILayoutUtility.GetRect(1, 1);
+            FlexibleMenu.DrawRect(seperatorRect,
+                (EditorGUIUtility.isProSkin)
+                    ? new Color(0.32f, 0.32f, 0.32f, 1.333f)
+                    : new Color(0.6f, 0.6f, 0.6f, 1.333f));                      // dark : light
+            GUILayout.Space(4);
+
+            // Optional text
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Styles.optionalText, GUILayout.Width(kColumnWidth));
+            GUILayout.Space(kSpacing);
+            m_TextSearch = EditorGUILayout.TextField(m_TextSearch);
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(5f);
+
+            // Cancel, Ok
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(10);
+            if (GUILayout.Button(Styles.cancel))
+            {
+                editorWindow.Close();
+            }
+
+            if (GUILayout.Button(Styles.ok) && !string.IsNullOrWhiteSpace(m_TextSearch))
+            {
+                m_Object = m_TextSearch;
+                Accepted();
+                editorWindow.Close();
+            }
+            GUILayout.Space(10);
+            GUILayout.EndHorizontal();
+        }
+    }
+
+    #endregion
 }
