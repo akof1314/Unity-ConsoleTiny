@@ -28,12 +28,14 @@ namespace ConsoleTiny
                 public int row;
                 public string lines;
                 public string text;
+                public string pure; // remove tag
                 public string lower;
                 public int entryCount;
                 public int searchIndex;
                 public ConsoleFlags flags;
                 public CoreLog.LogEntry entry;
                 public List<StacktraceLineInfo> stacktraceLineInfos;
+                public List<int> tagPosInfos;
             }
 
             [Flags]
@@ -310,7 +312,8 @@ namespace ConsoleTiny
                     flags = GetConsoleFlagFromMode(entry.mode),
                     entry = entry
                 };
-                entryInfo.lower = entryInfo.text.ToLower();
+                entryInfo.pure = GetPureLines(entryInfo.text, out entryInfo.tagPosInfos);
+                entryInfo.lower = entryInfo.pure.ToLower();
                 m_EntryInfos.Add(entryInfo);
 
                 // 没有将堆栈都进行搜索，以免信息太杂，只根据行数，但是变化行数时不会重新搜索
@@ -339,7 +342,8 @@ namespace ConsoleTiny
                 foreach (var entryInfo in m_EntryInfos)
                 {
                     entryInfo.text = GetNumberLines(entryInfo.lines);
-                    entryInfo.lower = entryInfo.text.ToLower();
+                    entryInfo.pure = GetPureLines(entryInfo.text, out entryInfo.tagPosInfos);
+                    entryInfo.lower = entryInfo.pure.ToLower();
                 }
             }
 
@@ -509,6 +513,156 @@ namespace ConsoleTiny
                 }
                 File.WriteAllText(filePath, sb.ToString());
             }
+
+            #region HTMLTag
+
+            private const int kTagQuadIndex = 5;
+
+            private readonly string[] m_TagStrings = new string[]
+            {
+                "b",
+                "i",
+                "color",
+                "size",
+                "material",
+                "quad",
+                "x",
+                "y",
+                "width",
+                "height",
+            };
+
+            private readonly StringBuilder m_StringBuilder = new StringBuilder();
+            private readonly Stack<int> m_TagStack = new Stack<int>();
+
+            private int GetTagIndex(string input, ref int pos, out bool closing)
+            {
+                closing = false;
+                if (input[pos] == '<')
+                {
+                    int inputLen = input.Length;
+                    int nextPos = pos + 1;
+                    if (nextPos == inputLen)
+                    {
+                        return -1;
+                    }
+
+                    closing = input[nextPos] == '/';
+                    if (closing)
+                    {
+                        nextPos++;
+                    }
+
+                    for (int i = 0; i < m_TagStrings.Length; i++)
+                    {
+                        var tagString = m_TagStrings[i];
+                        bool find = true;
+
+                        for (int j = 0; j < tagString.Length; j++)
+                        {
+                            int pingPos = nextPos + j;
+                            if (pingPos == inputLen || char.ToLower(input[pingPos]) != tagString[j])
+                            {
+                                find = false;
+                                break;
+                            }
+                        }
+
+                        if (find)
+                        {
+                            int endPos = nextPos + tagString.Length;
+                            if (endPos == inputLen)
+                            {
+                                continue;
+                            }
+
+                            if ((!closing && input[endPos] == '=') || (input[endPos] == ' ' && i == kTagQuadIndex))
+                            {
+                                while (input[endPos] != '>' && endPos < inputLen)
+                                {
+                                    endPos++;
+                                }
+                            }
+
+                            if (input[endPos] != '>')
+                            {
+                                continue;
+                            }
+
+                            pos = endPos;
+                            return i;
+                        }
+                    }
+                }
+                return -1;
+            }
+
+            private string GetPureLines(string input, out List<int> posList)
+            {
+                m_StringBuilder.Length = 0;
+                m_TagStack.Clear();
+                posList = null;
+
+                int preStrPos = 0;
+                int pos = 0;
+                while (pos < input.Length)
+                {
+                    int oldPos = pos;
+                    bool closing;
+                    int tagIndex = GetTagIndex(input, ref pos, out closing);
+                    if (tagIndex != -1)
+                    {
+                        if (closing)
+                        {
+                            if (m_TagStack.Count == 0 || m_TagStack.Pop() != tagIndex)
+                            {
+                                posList = null;
+                                return input;
+                            }
+                        }
+
+                        if (posList == null)
+                        {
+                            posList = new List<int>();
+                        }
+                        posList.Add(oldPos);
+                        posList.Add(pos);
+
+                        if (preStrPos != oldPos)
+                        {
+                            m_StringBuilder.Append(input, preStrPos, oldPos - preStrPos);
+                        }
+                        preStrPos = pos + 1;
+
+                        if (closing || tagIndex == kTagQuadIndex)
+                        {
+                            continue;
+                        }
+
+                        m_TagStack.Push(tagIndex);
+                    }
+                    pos++;
+                }
+
+                if (m_TagStack.Count > 0)
+                {
+                    posList = null;
+                    return input;
+                }
+
+                if (preStrPos > 0 && preStrPos < input.Length)
+                {
+                    m_StringBuilder.Append(input, preStrPos, input.Length - preStrPos);
+                }
+                if (m_StringBuilder.Length > 0)
+                {
+                    return m_StringBuilder.ToString();
+                }
+
+                return input;
+            }
+
+            #endregion
 
             #region CustomFilters
 
