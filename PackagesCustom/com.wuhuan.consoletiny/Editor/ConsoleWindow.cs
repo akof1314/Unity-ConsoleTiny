@@ -1141,11 +1141,15 @@ namespace ConsoleTiny
                 editorWindow.Close();
             }
 
-            if (GUILayout.Button(Styles.ok) && !string.IsNullOrWhiteSpace(m_TextSearch))
+            if (GUILayout.Button(Styles.ok))
             {
-                m_Object = m_TextSearch;
-                Accepted();
-                editorWindow.Close();
+                var textSearch = m_TextSearch.Trim();
+                if (!string.IsNullOrEmpty(textSearch))
+                {
+                    m_Object = m_TextSearch;
+                    Accepted();
+                    editorWindow.Close();
+                }
             }
             GUILayout.Space(10);
             GUILayout.EndHorizontal();

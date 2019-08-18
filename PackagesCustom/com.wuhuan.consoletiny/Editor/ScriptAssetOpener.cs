@@ -129,7 +129,11 @@ namespace ConsoleTiny
             }
             else
             {
+#if UNITY_2017_1_OR_NEWER
                 string vsPath = ScriptEditorUtility.GetExternalScriptEditor();
+#else
+                string vsPath = InternalEditorUtility.GetExternalScriptEditor();
+#endif
                 if (string.IsNullOrEmpty(vsPath) || !File.Exists(vsPath))
                 {
                     return;
