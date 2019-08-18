@@ -18,10 +18,14 @@ public class NewBehaviourScript : MonoBehaviour
     [ContextMenu("test2")]
     public void Test22()
     {
-        Debug.Log("abcabc");
-        Debug.Log("a222111110bcabc");
-        Debug.Log("abcabc");
-        Debug.Log("asdasdasddff<color=#ffffff>" + "ddddddddddddddd2222222222xxx" + "</color>sdfsdfds");
+        Debug.Log("We are <>usually");
+        Debug.Log("We are <i>usually</i> not amused <b>error</>");
+        Debug.Log("We are <b>usually</b> not amused");
+        Debug.Log("We are <i>usually</i> not amused");
+        Debug.Log("We are <size=8>usually</size> not amused.");
+        Debug.Log("We are <color=#00ffff>usually</color> not amused.");
+        Debug.Log("We are <color=magenta>usually</color> not amused.");
+        Debug.Log("We are <quad material=1 size=5 x=0.1 y=0.1 width=0.5 height=0.5 />usually not amused.");
     }
 
     private void Test1(string ta)

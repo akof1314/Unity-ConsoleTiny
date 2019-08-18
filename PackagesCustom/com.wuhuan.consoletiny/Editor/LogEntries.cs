@@ -32,6 +32,7 @@ namespace ConsoleTiny
                 public string lower;
                 public int entryCount;
                 public int searchIndex;
+                public int searchEndIndex;
                 public ConsoleFlags flags;
                 public CoreLog.LogEntry entry;
                 public List<StacktraceLineInfo> stacktraceLineInfos;
@@ -159,7 +160,7 @@ namespace ConsoleTiny
                 return m_FilteredInfos.Count;
             }
 
-            public string GetEntryLinesAndFlagAndCount(int row, ref int consoleFlag, ref int entryCount, ref int searchIndex)
+            public string GetEntryLinesAndFlagAndCount(int row, ref int consoleFlag, ref int entryCount, ref int searchIndex, ref int searchEndIndex)
             {
                 if (row < 0 || row >= m_FilteredInfos.Count)
                 {
@@ -170,6 +171,7 @@ namespace ConsoleTiny
                 consoleFlag = (int)entryInfo.flags;
                 entryCount = entryInfo.entryCount;
                 searchIndex = entryInfo.searchIndex;
+                searchEndIndex = entryInfo.searchEndIndex;
                 return entryInfo.text;
             }
 
@@ -316,10 +318,20 @@ namespace ConsoleTiny
                 entryInfo.lower = entryInfo.pure.ToLower();
                 m_EntryInfos.Add(entryInfo);
 
-                // 没有将堆栈都进行搜索，以免信息太杂，只根据行数，但是变化行数时不会重新搜索
-                if (HasFlag((int)entryInfo.flags) && (string.IsNullOrEmpty(m_SearchString) ||
-                      (entryInfo.searchIndex = entryInfo.lower.IndexOf(m_SearchString.ToLower(), StringComparison.Ordinal)) != -1))
+                bool hasSearchString = !string.IsNullOrEmpty(m_SearchString);
+                string searchStringValue = null;
+                int searchStringLen = 0;
+                if (hasSearchString)
                 {
+                    searchStringValue = m_SearchString.ToLower();
+                    searchStringLen = searchStringValue.Length;
+                }
+
+                // 没有将堆栈都进行搜索，以免信息太杂，只根据行数，但是变化行数时不会重新搜索
+                if (HasFlag((int)entryInfo.flags) && m_CustomFilters.HasFilters(entryInfo.lower) && (!hasSearchString ||
+                      (entryInfo.searchIndex = entryInfo.lower.IndexOf(searchStringValue, StringComparison.Ordinal)) != -1))
+                {
+                    SearchIndexToTagIndex(entryInfo, searchStringLen);
                     m_FilteredInfos.Add(entryInfo);
                 }
 
@@ -384,7 +396,8 @@ namespace ConsoleTiny
                     }
                 }
 
-                if (m_SearchString == m_SearchStringComing && m_ConsoleFlags == m_ConsoleFlagsComing)
+                bool customFiltersChangedValue = m_CustomFilters.IsChanged();
+                if (m_SearchString == m_SearchStringComing && m_ConsoleFlags == m_ConsoleFlagsComing && !customFiltersChangedValue)
                 {
                     return false;
                 }
@@ -395,20 +408,23 @@ namespace ConsoleTiny
                 bool flagsChangedValue = m_ConsoleFlags != m_ConsoleFlagsComing;
                 m_ConsoleFlags = m_ConsoleFlagsComing;
                 string searchStringValue = null;
+                int searchStringLen = 0;
                 if (hasSearchString)
                 {
                     searchStringValue = m_SearchStringComing.ToLower();
+                    searchStringLen = searchStringValue.Length;
                 }
 
-                if (flagsChangedValue || !startsWithValue)
+                if (flagsChangedValue || !startsWithValue || customFiltersChangedValue)
                 {
                     m_FilteredInfos.Clear();
 
                     foreach (var entryInfo in m_EntryInfos)
                     {
-                        if (HasFlag((int)entryInfo.flags) && (!hasSearchString
+                        if (HasFlag((int)entryInfo.flags) && m_CustomFilters.HasFilters(entryInfo.lower) && (!hasSearchString
                             || (entryInfo.searchIndex = entryInfo.lower.IndexOf(searchStringValue, StringComparison.Ordinal)) != -1))
                         {
+                            SearchIndexToTagIndex(entryInfo, searchStringLen);
                             m_FilteredInfos.Add(entryInfo);
                         }
                     }
@@ -420,6 +436,10 @@ namespace ConsoleTiny
                         if ((m_FilteredInfos[i].searchIndex = m_FilteredInfos[i].lower.IndexOf(searchStringValue, StringComparison.Ordinal)) == -1)
                         {
                             m_FilteredInfos.RemoveAt(i);
+                        }
+                        else
+                        {
+                            SearchIndexToTagIndex(m_FilteredInfos[i], searchStringLen);
                         }
                     }
                 }
@@ -433,6 +453,12 @@ namespace ConsoleTiny
                 if (flagsChangedValue)
                 {
                     EditorPrefs.SetInt(kPrefConsoleFlags, m_ConsoleFlags);
+                }
+
+                if (customFiltersChangedValue)
+                {
+                    m_CustomFilters.ClearChanged();
+                    m_CustomFilters.Save();
                 }
 
                 searchFrame = IsSelectedEntryShow();
@@ -662,6 +688,54 @@ namespace ConsoleTiny
                 return input;
             }
 
+            private int GetOriginalCharIndex(int idx, List<int> posList)
+            {
+                if (posList == null || posList.Count == 0)
+                {
+                    return idx;
+                }
+
+                int idx2 = 0;
+                for (int i = 0; i < posList.Count && (i + 1) < posList.Count;)
+                {
+                    int idx1 = idx2;
+                    if ((i - 1) > 0)
+                    {
+                        idx2 += posList[i] - posList[i - 1] - 1;
+                    }
+                    else
+                    {
+                        idx2 = posList[i] - 1;
+                    }
+
+                    if (idx >= idx1 && idx <= idx2)
+                    {
+                        if ((i - 1) > 0)
+                        {
+                            return posList[i - 1] + idx - idx1;
+                        }
+
+                        return idx;
+                    }
+
+                    i += 2;
+                }
+
+                return posList[posList.Count - 1] + idx - idx2;
+            }
+
+            private void SearchIndexToTagIndex(EntryInfo entryInfo, int searchLength)
+            {
+                if (entryInfo.searchIndex == -1)
+                {
+                    return;
+                }
+
+                entryInfo.searchEndIndex = GetOriginalCharIndex(entryInfo.searchIndex + searchLength,
+                    entryInfo.tagPosInfos);
+                entryInfo.searchIndex = GetOriginalCharIndex(entryInfo.searchIndex, entryInfo.tagPosInfos);
+            }
+
             #endregion
 
             #region CustomFilters
@@ -680,8 +754,11 @@ namespace ConsoleTiny
                     {
                         if (value != m_Filter)
                         {
-                            m_Filter = value;
-                            changed = true;
+                            m_Filter = value.ToLower();
+                            if (toggle)
+                            {
+                                changed = true;
+                            }
                         }
                     }
                 }
@@ -724,6 +801,19 @@ namespace ConsoleTiny
                     {
                         filter.changed = false;
                     }
+                }
+
+                public bool HasFilters(string input)
+                {
+                    foreach (var filter in filters)
+                    {
+                        if (filter.toggle && !input.Contains(filter.filter))
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
                 }
 
                 public void Load()

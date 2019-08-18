@@ -612,7 +612,9 @@ namespace ConsoleTiny
                         int mode = 0;
                         int entryCount = 0;
                         int searchIndex = 0;
-                        string text = LogEntries.wrapped.GetEntryLinesAndFlagAndCount(el.row, ref mode, ref entryCount, ref searchIndex);
+                        int searchEndIndex = 0;
+                        string text = LogEntries.wrapped.GetEntryLinesAndFlagAndCount(el.row, ref mode, ref entryCount,
+                            ref searchIndex, ref searchEndIndex);
                         ConsoleFlags flag = (ConsoleFlags)mode;
                         bool isSelected = LogEntries.wrapped.IsEntrySelected(el.row);
 
@@ -648,8 +650,7 @@ namespace ConsoleTiny
                         }
                         else
                         {
-                            int endIndex = searchIndex + LogEntries.wrapped.searchString.Length;
-                            errorModeStyle.DrawWithTextSelection(el.position, tempContent, GUIUtility.keyboardControl, searchIndex, endIndex);
+                            errorModeStyle.DrawWithTextSelection(el.position, tempContent, GUIUtility.keyboardControl, searchIndex, searchEndIndex);
                         }
 
                         if (collapsed)
@@ -1038,8 +1039,11 @@ namespace ConsoleTiny
 
         public void Remove(int index)
         {
+            if (m_Groups.filters[index].toggle)
+            {
+                m_Groups.changed = true;
+            }
             m_Groups.filters.RemoveAt(index);
-            m_Groups.changed = true;
             m_Groups.Save();
         }
 
