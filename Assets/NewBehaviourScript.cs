@@ -22,7 +22,7 @@ public class NewBehaviourScript : MonoBehaviour
         Debug.Log("We are <i>usually</i> not amused <b>error</>");
         Debug.Log("We are <b>usually</b> not amused");
         Debug.Log("We are <i>usually</i> not amused");
-        Debug.Log("We are <size=8>usually</size> not amused.");
+        //Debug.Log("We are <size=8>usually</size> not amused.");
         Debug.Log("We are <color=#00ffff>usually</color> not amused.");
         Debug.Log("We are <color=magenta>usually</color> not amused.");
         Debug.Log("We are <quad material=1 size=5 x=0.1 y=0.1 width=0.5 height=0.5 />usually not amused.");
@@ -31,14 +31,14 @@ public class NewBehaviourScript : MonoBehaviour
     private void Test1(string ta)
     {
         Test2();
-        Test3();
+        //Test3();
     }
 
     private void Test2()
     {
         Debug.Log("more");
-        //string a = "aaaa";
-        //a.LastIndexOf('.', 8, 20);
+        string a = "aaaa";
+        a.LastIndexOf('.', 8, 20);
     }
 
     private void Test3()
