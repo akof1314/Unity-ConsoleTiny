@@ -9,6 +9,8 @@ Console Tiny is a powerful replacement for Unity's editor console.
 - Custom Filters
 - DLL Support
 
+![](https://github.com/akof1314/Unity-ConsoleTiny/raw/master/DLLTest/screenshot.png)
+
 ## Install
 - Unity 5.x
 	- put [UnityEditor.Facebook.Extensions.dll](https://github.com/akof1314/Unity-ConsoleTiny/blob/master/5.6/Test/Assets/Editor/UnityEditor.Facebook.Extensions.dll) to `Assets\Editor\`
