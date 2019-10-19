@@ -158,6 +158,8 @@ namespace ConsoleTiny
                 if (packageInfo.name == "com.wuhuan.consoletiny")
                 {
                     exePath = packageInfo.resolvedPath;
+                    // https://github.com/akof1314/VisualStudioFileOpenTool
+                    exePath = exePath + "\\Editor\\VisualStudioFileOpenTool.exe";
                     break;
                 }
             }
@@ -166,11 +168,13 @@ namespace ConsoleTiny
             // TODO
             exePath = "../../PackagesCustom/com.wuhuan.consoletiny";
 #endif
+            if (string.IsNullOrEmpty(exePath))
+            {
+                exePath = "Assets/Editor/VisualStudioFileOpenTool.exe";
+            }
 
             if (!string.IsNullOrEmpty(exePath))
             {
-                // https://github.com/akof1314/VisualStudioFileOpenTool
-                exePath = exePath + "\\Editor\\VisualStudioFileOpenTool.exe";
                 if (!File.Exists(exePath))
                 {
                     return;

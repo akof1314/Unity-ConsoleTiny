@@ -1,5 +1,5 @@
 # Unity-ConsoleTiny
-Console Tiny is a powerful replacement for Unity's editor console. 
+Console Tiny is a powerful replacement for Unity's editor console.
 
 ## Feature
 - Text Search Filter
@@ -8,12 +8,14 @@ Console Tiny is a powerful replacement for Unity's editor console.
 - Callstack Navigation
 - Custom Filters
 - DLL Support
+- Lua Support
+- Wrapper Support
 
 ![](https://github.com/akof1314/Unity-ConsoleTiny/raw/master/DLLTest/screenshot.png)
 
 ## Install
 - Unity 5.x
-	- put [UnityEditor.Facebook.Extensions.dll](https://github.com/akof1314/Unity-ConsoleTiny/blob/master/5.6/Test/Assets/Editor/UnityEditor.Facebook.Extensions.dll) to `Assets\Editor\`
+	- [Unity-ConsoleTiny_5X.unitypackage](https://github.com/akof1314/Unity-ConsoleTiny/releases)
 - Unity 2017.x
 	- `UnityPackageManager\manifest.json`
 - Unity 2018.x (or later)
