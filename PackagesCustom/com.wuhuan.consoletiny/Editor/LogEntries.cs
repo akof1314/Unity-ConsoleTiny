@@ -133,11 +133,13 @@ namespace ConsoleTiny
             private readonly List<EntryInfo> m_EntryInfos = new List<EntryInfo>();
             private readonly List<EntryInfo> m_FilteredInfos = new List<EntryInfo>();
             private readonly CustomFiltersGroup m_CustomFilters = new CustomFiltersGroup();
+            private readonly List<string> m_WrapperInfos = new List<string>();
 
             private const string kPrefConsoleFlags = "ConsoleTiny_ConsoleFlags";
             private const string kPrefShowTimestamp = "ConsoleTiny_ShowTimestamp";
             private const string kPrefCollapse = "ConsoleTiny_Collapse";
             private const string kPrefCustomFilters = "ConsoleTiny_CustomFilters";
+            private const string kPrefWrappers = "ConsoleTiny_Wrappers";
 
             public bool HasFlag(int flags) { return (m_ConsoleFlags & flags) != 0; }
 
@@ -370,6 +372,8 @@ namespace ConsoleTiny
                 m_ConsoleFlagsComing = EditorPrefs.GetInt(kPrefConsoleFlags, 896);
                 m_ShowTimestamp = EditorPrefs.GetBool(kPrefShowTimestamp, false);
                 m_Collapse = EditorPrefs.GetBool(kPrefCollapse, false);
+                m_WrapperInfos.Clear();
+                m_WrapperInfos.AddRange(EditorPrefs.GetString(kPrefWrappers, String.Empty).Split('\n'));
                 m_CustomFilters.Load();
             }
 
@@ -878,6 +882,7 @@ namespace ConsoleTiny
             {
                 public string plain;
                 public string text;
+                public string wrapper;
                 public string filePath;
                 public int lineNum;
             }
@@ -1105,6 +1110,11 @@ namespace ConsoleTiny
                                 string.Format("<color=#{0}>{1}</color>", Constants.colorPath, fileString) +
                                 string.Format("<color=#{0}>{1}</color>", Constants.colorFilename, fileNameString) +
                                 string.Format("<color=#{0}>{1}</color>", Constants.colorPath, fileLineString);
+                    info.wrapper = namespaceString + classString;
+                    if (info.wrapper.Length > 0)
+                    {
+                        info.wrapper = info.wrapper.Remove(info.wrapper.Length - 1);
+                    }
                 }
 
                 return true;
@@ -1193,6 +1203,35 @@ namespace ConsoleTiny
                 return false;
             }
 
+            public bool StacktraceListView_CanWrapper(int stacktraceLineInfoIndex)
+            {
+                if (!StacktraceListView_IsExist())
+                {
+                    return false;
+                }
+
+                if (stacktraceLineInfoIndex < m_SelectedInfo.stacktraceLineInfos.Count)
+                {
+                    return !string.IsNullOrEmpty(m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].wrapper);
+                }
+                return false;
+            }
+
+            public bool StacktraceListView_IsWrapper(int stacktraceLineInfoIndex)
+            {
+                if (!StacktraceListView_IsExist())
+                {
+                    return false;
+                }
+
+                if (stacktraceLineInfoIndex < m_SelectedInfo.stacktraceLineInfos.Count)
+                {
+                    return !string.IsNullOrEmpty(m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].wrapper) &&
+                        m_WrapperInfos.Contains(m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].wrapper);
+                }
+                return false;
+            }
+
             public void StacktraceListView_RowGotDoubleClicked()
             {
                 if (!StacktraceListView_IsExist())
@@ -1205,8 +1244,11 @@ namespace ConsoleTiny
                     var stacktraceLineInfo = m_SelectedInfo.stacktraceLineInfos[i];
                     if (!string.IsNullOrEmpty(stacktraceLineInfo.filePath))
                     {
-                        StacktraceListView_Open(i);
-                        break;
+                        if (string.IsNullOrEmpty(stacktraceLineInfo.wrapper) || !m_WrapperInfos.Contains(stacktraceLineInfo.wrapper))
+                        {
+                            StacktraceListView_Open(i);
+                            break;
+                        }
                     }
                 }
             }
@@ -1224,6 +1266,38 @@ namespace ConsoleTiny
                     var filePath = m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].filePath;
                     var lineNum = m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].lineNum;
                     ScriptAssetOpener.OpenAsset(filePath, lineNum);
+                }
+            }
+
+            public void StacktraceListView_Wrapper(object userData)
+            {
+                if (!StacktraceListView_IsExist())
+                {
+                    return;
+                }
+
+                var stacktraceLineInfoIndex = (int)userData;
+                if (stacktraceLineInfoIndex < m_SelectedInfo.stacktraceLineInfos.Count)
+                {
+                    var wrapper = m_SelectedInfo.stacktraceLineInfos[stacktraceLineInfoIndex].wrapper;
+                    if (m_WrapperInfos.Contains(wrapper))
+                    {
+                        m_WrapperInfos.Remove(wrapper);
+                    }
+                    else
+                    {
+                        m_WrapperInfos.Add(wrapper);
+                    }
+                    StringBuilder sb = new StringBuilder();
+                    foreach (var info in m_WrapperInfos)
+                    {
+                        if (!string.IsNullOrEmpty(info))
+                        {
+                            sb.Append(info);
+                            sb.Append('\n');
+                        }
+                    }
+                    EditorPrefs.SetString(kPrefWrappers, sb.ToString());
                 }
             }
 

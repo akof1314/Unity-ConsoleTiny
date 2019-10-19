@@ -817,6 +817,10 @@ namespace ConsoleTiny
                 {
                     menu.AddItem(new GUIContent("Open"), false, LogEntries.wrapped.StacktraceListView_Open, stacktraceLineInfoIndex);
                     menu.AddSeparator("");
+                    if (LogEntries.wrapped.StacktraceListView_CanWrapper(stacktraceLineInfoIndex))
+                    {
+                        menu.AddItem(new GUIContent("Wrapper"), LogEntries.wrapped.StacktraceListView_IsWrapper(stacktraceLineInfoIndex), LogEntries.wrapped.StacktraceListView_Wrapper, stacktraceLineInfoIndex);
+                    }
                 }
                 menu.AddItem(new GUIContent("Copy"), false, LogEntries.wrapped.StacktraceListView_Copy, stacktraceLineInfoIndex);
                 menu.AddItem(new GUIContent("Copy All"), false, LogEntries.wrapped.StacktraceListView_CopyAll);
