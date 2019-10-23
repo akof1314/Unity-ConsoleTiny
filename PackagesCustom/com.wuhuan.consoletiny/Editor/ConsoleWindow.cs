@@ -1025,7 +1025,7 @@ namespace ConsoleTiny
 
         public object GetItem(int index)
         {
-            return m_Groups.filters[index];
+            return m_Groups.filters[index].filter;
         }
 
         public int Add(object obj)
