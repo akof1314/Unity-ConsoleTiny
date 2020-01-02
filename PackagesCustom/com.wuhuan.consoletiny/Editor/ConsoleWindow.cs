@@ -63,6 +63,7 @@ namespace ConsoleTiny
             public static readonly string ClearOnBuildLabel = ("Clear on Build");
             public static readonly string FirstErrorLabel = ("First Error");
             public static readonly string CustomFiltersLabel = ("Custom Filters");
+            public static readonly string ImportWatchingLabel = ("Import Watching");
 
             public static int LogStyleLineCount
             {
@@ -485,6 +486,11 @@ namespace ConsoleTiny
             }
 
             GUILayout.BeginHorizontal(Constants.Toolbar);
+
+            if (LogEntries.wrapped.importWatching)
+            {
+                LogEntries.wrapped.importWatching = GUILayout.Toggle(LogEntries.wrapped.importWatching, Constants.ImportWatchingLabel, Constants.MiniButton);
+            }
 
             if (GUILayout.Button(Constants.ClearLabel, Constants.MiniButton))
             {
@@ -918,6 +924,7 @@ namespace ConsoleTiny
                 menu.AddItem(EditorGUIUtility.TextContent("Open Player Log"), false, UnityEditorInternal.InternalEditorUtility.OpenPlayerConsole);
             menu.AddItem(EditorGUIUtility.TextContent("Open Editor Log"), false, UnityEditorInternal.InternalEditorUtility.OpenEditorConsole);
             menu.AddItem(EditorGUIUtility.TextContent("Export Console Log"), false, LogEntries.wrapped.ExportLog);
+            menu.AddItem(EditorGUIUtility.TextContent("Import Console Log"), false, LogEntries.wrapped.ImportLog);
 
 #if UNITY_2018_1_OR_NEWER
             menu.AddItem(EditorGUIUtility.TrTextContent("Show Timestamp"), LogEntries.wrapped.showTimestamp, SetTimestamp);

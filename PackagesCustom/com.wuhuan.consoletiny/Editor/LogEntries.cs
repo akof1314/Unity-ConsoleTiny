@@ -117,6 +117,20 @@ namespace ConsoleTiny
 
             public bool searchFrame { get; set; }
 
+            public bool importWatching
+            {
+                get { return m_ImportWatching; }
+                set
+                {
+                    m_ImportWatching = value;
+                    if (!value)
+                    {
+                        ClearEntries();
+                        UpdateEntries();
+                    }
+                }
+            }
+
             private int m_ConsoleFlags;
             private int m_ConsoleFlagsComing;
             private string m_SearchString;
@@ -124,6 +138,7 @@ namespace ConsoleTiny
             private double m_LastSearchStringTime;
 
             private bool m_Init;
+            private bool m_ImportWatching;
             private int m_NumberOfLines;
             private bool m_ShowTimestamp;
             private bool m_Collapse;
@@ -245,6 +260,12 @@ namespace ConsoleTiny
             public void UpdateEntries()
             {
                 CheckInit();
+                if (importWatching)
+                {
+                    CheckRepaint(CheckSearchStringChanged());
+                    return;
+                }
+
                 int flags = CoreLog.LogEntries.consoleFlags;
                 CoreLog.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelLog, true);
                 CoreLog.LogEntries.SetConsoleFlag((int)ConsoleFlags.LogLevelWarning, true);
@@ -517,7 +538,7 @@ namespace ConsoleTiny
                 {
                     int startIndex = 0;
 #if UNITY_2018_1_OR_NEWER
-                    if (!showTimestamp)
+                    if (!showTimestamp && !importWatching)
                     {
                         startIndex = 11;
                     }
@@ -539,9 +560,66 @@ namespace ConsoleTiny
                 StringBuilder sb = new StringBuilder();
                 foreach (var entryInfo in m_FilteredInfos)
                 {
-                    sb.AppendLine(entryInfo.entry.condition);
+                    if (entryInfo.flags == ConsoleFlags.LogLevelError)
+                    {
+                        sb.Append("LogStart3----");
+                    }
+                    else if (entryInfo.flags == ConsoleFlags.LogLevelWarning)
+                    {
+                        sb.Append("LogStart2----");
+                    }
+                    else
+                    {
+                        sb.Append("LogStart1----");
+                    }
+                    sb.Append(entryInfo.entry.condition);
+                    sb.Append("\r\n");  // 方便导入的时候，进行识别
                 }
                 File.WriteAllText(filePath, sb.ToString());
+            }
+
+            public void ImportLog()
+            {
+                string filePath = EditorUtility.OpenFilePanelWithFilters("Import Log", "",
+                    new[] { "Log files", "txt,log", "All files", "*" });
+                if (string.IsNullOrEmpty(filePath))
+                {
+                    return;
+                }
+
+                ClearEntries();
+                importWatching = true;
+                var logText = File.ReadAllText(filePath);
+                var conditions = logText.Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < conditions.Length; i++)
+                {
+                    var text = conditions[i];
+                    var entry = new LogEntry { mode = 0 };
+
+                    if (text.StartsWith("LogStart", StringComparison.Ordinal))
+                    {
+                        if (text.StartsWith("LogStart3----", StringComparison.Ordinal))
+                        {
+                            entry.mode = (int)Mode.ScriptingError;
+                        }
+                        else if (text.StartsWith("LogStart2----", StringComparison.Ordinal))
+                        {
+                            entry.mode = (int)Mode.ScriptingWarning;
+                        }
+                        else if (text.StartsWith("LogStart1----", StringComparison.Ordinal))
+                        {
+                            entry.mode = (int)Mode.ScriptingLog;
+                        }
+
+                        if (entry.mode != 0)
+                        {
+                            text = text.Substring(13);
+                        }
+                    }
+
+                    entry.condition = text;
+                    AddEntry(i, entry, text, 0);
+                }
             }
 
             #region HTMLTag
