@@ -3,9 +3,10 @@ using System.Globalization;
 using UnityEngine;
 using UnityEditor;
 #if UNITY_2020_1_OR_NEWER
+using UnityEngine.Networking.PlayerConnection;
 using UnityEditor.Networking.PlayerConnection;
 #elif UNITY_2018_3_OR_NEWER
-
+using UnityEngine.Experimental.Networking.PlayerConnection;
 using UnityEditor.Experimental.Networking.PlayerConnection;
 using ConnectionGUILayout = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUILayout;
 #endif
@@ -240,7 +241,7 @@ namespace ConsoleTiny
             }
         }
 
-        UnityEngine.Networking.PlayerConnection.IConnectionState m_ConsoleAttachToPlayerState;
+        IConnectionState m_ConsoleAttachToPlayerState;
 #endif
 
         enum ConsoleFlags
