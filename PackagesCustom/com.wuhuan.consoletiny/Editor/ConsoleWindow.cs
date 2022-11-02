@@ -941,6 +941,8 @@ namespace ConsoleTiny
             }
 
             AddStackTraceLoggingMenu(menu);
+
+            menu.AddItem(EditorGUIUtility.TextContent("Lua Script Editor"), false, ScriptAssetOpener.SetLuaScriptEditor);
         }
 
         private void SetTimestamp()

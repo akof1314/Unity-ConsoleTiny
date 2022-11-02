@@ -589,37 +589,57 @@ namespace ConsoleTiny
 
                 ClearEntries();
                 importWatching = true;
+                EditorUtility.DisplayProgressBar("Import Log", String.Empty, 0.2f);
                 var logText = File.ReadAllText(filePath);
-                var conditions = logText.Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
-                for (int i = 0; i < conditions.Length; i++)
+                string[] conditions;
+                if (logText.StartsWith("LogStart", StringComparison.Ordinal) && logText.IndexOf("\nLogStart", StringComparison.Ordinal) != -1)
                 {
-                    var text = conditions[i];
-                    var entry = new LogEntry { mode = 0 };
-
-                    if (text.StartsWith("LogStart", StringComparison.Ordinal))
+                    conditions = logText.Split(new[] { "\nLogStart" }, StringSplitOptions.RemoveEmptyEntries);
+                    conditions[0] = conditions[0].Substring(8);
+                    for (int i = 0; i < conditions.Length; i++)
                     {
-                        if (text.StartsWith("LogStart3----", StringComparison.Ordinal))
+                        var text = conditions[i];
+                        var entry = new LogEntry { mode = 0 };
+
                         {
-                            entry.mode = (int)Mode.ScriptingError;
-                        }
-                        else if (text.StartsWith("LogStart2----", StringComparison.Ordinal))
-                        {
-                            entry.mode = (int)Mode.ScriptingWarning;
-                        }
-                        else if (text.StartsWith("LogStart1----", StringComparison.Ordinal))
-                        {
-                            entry.mode = (int)Mode.ScriptingLog;
+                            if (text.StartsWith("3----", StringComparison.Ordinal))
+                            {
+                                entry.mode = (int)Mode.ScriptingError;
+                            }
+                            else if (text.StartsWith("2----", StringComparison.Ordinal))
+                            {
+                                entry.mode = (int)Mode.ScriptingWarning;
+                            }
+                            else if (text.StartsWith("1----", StringComparison.Ordinal))
+                            {
+                                entry.mode = (int)Mode.ScriptingLog;
+                            }
+
+                            if (entry.mode != 0)
+                            {
+                                text = text.Substring(5);
+                            }
                         }
 
-                        if (entry.mode != 0)
-                        {
-                            text = text.Substring(13);
-                        }
+                        entry.condition = text;
+                        AddEntry(i, entry, text, 0);
                     }
-
-                    entry.condition = text;
-                    AddEntry(i, entry, text, 0);
                 }
+                else
+                {
+                    conditions = logText.Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+
+                    for (int i = 0; i < conditions.Length; i++)
+                    {
+                        var text = conditions[i];
+                        var entry = new LogEntry { mode = 0 };
+                        entry.condition = text;
+                        AddEntry(i, entry, text, 0);
+                    }
+                }
+                EditorUtility.DisplayProgressBar("Import Log", String.Empty, 0.4f);
+                
+                EditorUtility.ClearProgressBar();
             }
 
             #region HTMLTag

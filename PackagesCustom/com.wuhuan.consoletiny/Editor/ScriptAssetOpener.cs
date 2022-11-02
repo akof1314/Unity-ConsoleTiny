@@ -33,7 +33,7 @@ namespace ConsoleTiny
             {
                 return false;
             }
-            if (file.StartsWith("Assets/"))
+            if (file.StartsWith("Assets/", StringComparison.Ordinal))
             {
                 var ext = Path.GetExtension(file).ToLower();
                 if (ext == ".lua" && TryOpenLuaFile(file, line))
@@ -158,8 +158,6 @@ namespace ConsoleTiny
                 if (packageInfo.name == "com.wuhuan.consoletiny")
                 {
                     exePath = packageInfo.resolvedPath;
-                    // https://github.com/akof1314/VisualStudioFileOpenTool
-                    exePath = exePath + "\\Editor\\VisualStudioFileOpenTool.exe";
                     break;
                 }
             }
@@ -168,13 +166,11 @@ namespace ConsoleTiny
             // TODO
             exePath = "../../PackagesCustom/com.wuhuan.consoletiny";
 #endif
-            if (string.IsNullOrEmpty(exePath))
-            {
-                exePath = "Assets/Editor/VisualStudioFileOpenTool.exe";
-            }
 
             if (!string.IsNullOrEmpty(exePath))
             {
+                // https://github.com/akof1314/VisualStudioFileOpenTool
+                exePath = exePath + "\\Editor\\VisualStudioFileOpenTool.exe";
                 if (!File.Exists(exePath))
                 {
                     return;
@@ -199,12 +195,34 @@ namespace ConsoleTiny
             });
         }
 
-        private static bool TryOpenLuaFile(string file, int line)
+        private const string kLuaScriptEditor = "ConsoleTiny_LuaScriptEditor";
+
+        public static void SetLuaScriptEditor()
         {
+            string filePath = EditorUtility.OpenFilePanel("Lua Script Editor", "", InternalEditorUtility.GetApplicationExtensionForRuntimePlatform(UnityEngine.Application.platform));
+            if (string.IsNullOrEmpty(filePath))
+            {
+                return;
+            }
+
             if (IsNotWindowsEditor())
             {
-                return false;
+                if (filePath.EndsWith(".app", StringComparison.Ordinal))
+                {
+                    filePath = Path.Combine(filePath, "Contents/MacOS");
+                    var filePaths = Directory.GetFiles(filePath);
+                    if (filePaths.Length > 0)
+                    {
+                        filePath = filePaths[0];
+                    }
+                }
             }
+
+            EditorPrefs.SetString(kLuaScriptEditor, filePath);
+        }
+
+        private static bool TryOpenLuaFile(string file, int line)
+        {
             string luaPath = LuaExecutablePath();
             if (string.IsNullOrEmpty(luaPath) || !File.Exists(luaPath))
             {
@@ -222,7 +240,8 @@ namespace ConsoleTiny
         {
             string arg = string.Format("{0}:{1}", QuotePathIfNeeded(file), line);
             if (exePath.EndsWith("idea.exe", StringComparison.Ordinal) ||
-                exePath.EndsWith("idea64.exe", StringComparison.Ordinal))
+                exePath.EndsWith("idea64.exe", StringComparison.Ordinal) ||
+                exePath.EndsWith("idea", StringComparison.Ordinal))
             {
                 arg = String.Format("--line {1} {0}", QuotePathIfNeeded(file), line);
             }
@@ -238,6 +257,16 @@ namespace ConsoleTiny
 
         private static string LuaExecutablePath()
         {
+            string path = EditorPrefs.GetString(kLuaScriptEditor, string.Empty);
+            if (!string.IsNullOrEmpty(path))
+            {
+                return path;
+            }
+            if (IsNotWindowsEditor())
+            {
+                return String.Empty;
+            }
+
             using (RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.lua\\UserChoice"))
             {
                 if (registryKey != null)
