@@ -2,8 +2,10 @@
 using System.Globalization;
 using UnityEngine;
 using UnityEditor;
-#if UNITY_2018_3_OR_NEWER
-using UnityEngine.Experimental.Networking.PlayerConnection;
+#if UNITY_2020_1_OR_NEWER
+using UnityEditor.Networking.PlayerConnection;
+#elif UNITY_2018_3_OR_NEWER
+
 using UnityEditor.Experimental.Networking.PlayerConnection;
 using ConnectionGUILayout = UnityEditor.Experimental.Networking.PlayerConnection.EditorGUILayout;
 #endif
@@ -238,7 +240,7 @@ namespace ConsoleTiny
             }
         }
 
-        IConnectionState m_ConsoleAttachToPlayerState;
+        UnityEngine.Networking.PlayerConnection.IConnectionState m_ConsoleAttachToPlayerState;
 #endif
 
         enum ConsoleFlags
@@ -546,7 +548,9 @@ namespace ConsoleTiny
 #endif
             SetFlag(ConsoleFlags.ErrorPause, GUILayout.Toggle(HasFlag(ConsoleFlags.ErrorPause), Constants.ErrorPauseLabel, Constants.MiniButton));
 
-#if UNITY_2018_3_OR_NEWER
+#if UNITY_2020_1_OR_NEWER
+            PlayerConnectionGUILayout.ConnectionTargetSelectionDropdown(m_ConsoleAttachToPlayerState, EditorStyles.toolbarDropDown);
+#elif UNITY_2018_3_OR_NEWER
             ConnectionGUILayout.AttachToPlayerDropdown(m_ConsoleAttachToPlayerState, EditorStyles.toolbarDropDown);
 #endif
 

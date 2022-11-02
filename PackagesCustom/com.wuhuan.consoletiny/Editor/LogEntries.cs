@@ -572,7 +572,11 @@ namespace ConsoleTiny
                     {
                         sb.Append("LogStart1----");
                     }
+#if UNITY_2019_2_OR_NEWER
+                    sb.Append(entryInfo.entry.message);
+#else
                     sb.Append(entryInfo.entry.condition);
+#endif
                     sb.Append("\r\n");  // 方便导入的时候，进行识别
                 }
                 File.WriteAllText(filePath, sb.ToString());
@@ -620,8 +624,11 @@ namespace ConsoleTiny
                                 text = text.Substring(5);
                             }
                         }
-
+#if UNITY_2019_2_OR_NEWER
+                        entry.message = text;
+#else
                         entry.condition = text;
+#endif
                         AddEntry(i, entry, text, 0);
                     }
                 }
@@ -633,7 +640,11 @@ namespace ConsoleTiny
                     {
                         var text = conditions[i];
                         var entry = new LogEntry { mode = 0 };
+#if UNITY_2019_2_OR_NEWER
+                        entry.message = text;
+#else
                         entry.condition = text;
+#endif
                         AddEntry(i, entry, text, 0);
                     }
                 }
@@ -1050,7 +1061,11 @@ namespace ConsoleTiny
 
             private void StacktraceListView_Parse(EntryInfo entryInfo)
             {
+#if UNITY_2019_2_OR_NEWER
+                var lines = entryInfo.entry.message.Split(new char[] { '\n' }, StringSplitOptions.None);
+#else
                 var lines = entryInfo.entry.condition.Split(new char[] { '\n' }, StringSplitOptions.None);
+#endif
                 entryInfo.stacktraceLineInfos = new List<StacktraceLineInfo>(lines.Length);
 
                 string rootDirectory = System.IO.Path.Combine(Application.dataPath, "..");
@@ -1420,7 +1435,11 @@ namespace ConsoleTiny
                     return;
                 }
 
+#if UNITY_2019_2_OR_NEWER
+                EditorGUIUtility.systemCopyBuffer = m_SelectedInfo.entry.message;
+#else
                 EditorGUIUtility.systemCopyBuffer = m_SelectedInfo.entry.condition;
+#endif
             }
 
             #endregion

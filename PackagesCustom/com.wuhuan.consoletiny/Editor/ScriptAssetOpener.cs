@@ -62,8 +62,17 @@ namespace ConsoleTiny
             {
                 fileFullPath = Path.GetFullPath(file.Replace('/', separatorChar));
             }
-
-#if UNITY_2018_1_OR_NEWER
+ #if UNITY_2020_1_OR_NEWER
+            var packageInfos = UnityEditor.PackageManager.PackageInfo.GetAll();
+            foreach (var packageInfo in packageInfos)
+            {
+                if (fileFullPath.StartsWith(packageInfo.resolvedPath, StringComparison.Ordinal))
+                {
+                    InternalEditorUtility.OpenFileAtLineExternal(fileFullPath, line);
+                    return true;
+                }
+            }
+#elif UNITY_2018_1_OR_NEWER
             var packageInfos = Packages.GetAll();
             foreach (var packageInfo in packageInfos)
             {
@@ -151,7 +160,17 @@ namespace ConsoleTiny
             }
             string exePath = String.Empty;
 
-#if UNITY_2018_1_OR_NEWER
+#if UNITY_2020_1_OR_NEWER
+            var packageInfos = UnityEditor.PackageManager.PackageInfo.GetAll();
+            foreach (var packageInfo in packageInfos)
+            {
+                if (packageInfo.name == "com.wuhuan.consoletiny")
+                {
+                    exePath = packageInfo.resolvedPath;
+                    break;
+                }
+            }
+#elif UNITY_2018_1_OR_NEWER
             var packageInfos = Packages.GetAll();
             foreach (var packageInfo in packageInfos)
             {
